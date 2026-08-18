@@ -22,7 +22,6 @@
 #![allow(unused)]
 
 use std::collections::{HashMap, HashSet};
-use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{Duration, Instant};
 
 use serde::Serialize;
@@ -119,18 +118,26 @@ pub struct DshManager {
     /// 当前处于 running 状态的会话集合（用于“全部空闲 ⇒ 任务完成”判定）
     running_sessions: HashSet<String>,
     session_runs: HashMap<String, SessionRun>,
+    /// 事件监控任务代数（保证同一时刻只有一个 watcher，避免重复通知）
+    watcher_seq: u64,
 }
 
 impl Default for DshManager {
     fn default() -> Self {
+        // 端口可通过环境变量 DSH_PORT 覆盖（默认 3080，与 DSH web profile 一致）
+        let port = std::env::var("DSH_PORT")
+            .ok()
+            .and_then(|v| v.trim().parse::<u16>().ok())
+            .unwrap_or(DSH_DEFAULT_PORT);
         Self {
             state: DshState::Stopped,
             owned: false,
             child: None,
-            port: DSH_DEFAULT_PORT,
+            port,
             last_error: None,
             running_sessions: HashSet::new(),
             session_runs: HashMap::new(),
+            watcher_seq: 0,
         }
     }
 }
@@ -297,6 +304,7 @@ fn kill_process_tree(child: &mut std::process::Child) {
     let pid = child.id();
     #[cfg(target_os = "windows")]
     {
+        use std::os::windows::process::CommandExt;
         let _ = std::process::Command::new("taskkill")
             .args(["/PID", &pid.to_string(), "/T", "/F"])
             .creation_flags(CREATE_NO_WINDOW)
@@ -519,37 +527,39 @@ async fn wait_until_ready(app: AppHandle, port: u16) {
 /// 停止 DSH。仅当 DSH 由本程序启动时才会终止进程；
 /// 用户自行启动的实例不会被杀掉，仅解除关联并关闭面板。
 pub fn stop_dsh(app: AppHandle) -> Result<DshStatus, String> {
-    let state: tauri::State<crate::app_state::AppState> = app.state();
-    let mut mgr = state.dsh.lock().unwrap();
+    // 1) 取出待终止的子进程（先释放锁再执行耗时 kill）
+    let child_to_kill: Option<std::process::Child> = {
+        let state: tauri::State<crate::app_state::AppState> = app.state();
+        let mut mgr = state.dsh.lock().unwrap();
+        if mgr.state == DshState::Stopped || mgr.state == DshState::Error {
+            mgr.set_state(DshState::Stopped, None);
+            let status = mgr.status();
+            drop(mgr);
+            let _ = emit(&app, events::DSH_STATUS, status.clone());
+            refresh_tray_menu(&app);
+            return Ok(status);
+        }
+        mgr.set_state(DshState::Stopping, None);
+        if mgr.owned {
+            mgr.child.take()
+        } else {
+            None
+        }
+    };
 
-    if mgr.state == DshState::Stopped || mgr.state == DshState::Error {
-        mgr.set_state(DshState::Stopped, None);
-        let status = mgr.status();
-        drop(mgr);
-        let _ = emit(&app, events::DSH_STATUS, status.clone());
-        refresh_tray_menu(&app);
-        return Ok(status);
+    // 2) 终止进程树
+    if let Some(mut child) = child_to_kill {
+        dsh_log(&app, "stopping dsh process tree");
+        kill_process_tree(&mut child);
     }
 
-    mgr.set_state(DshState::Stopping, None);
-    let owned = mgr.owned;
-
-    if owned {
-        let child = mgr.child.take();
-        drop(mgr);
-        if let Some(mut child) = child {
-            dsh_log(&app, "stopping dsh process tree");
-            kill_process_tree(&mut child);
-        }
+    // 3) 标记停止并通知
+    let status = {
         let state: tauri::State<crate::app_state::AppState> = app.state();
         let mut mgr = state.dsh.lock().unwrap();
         mgr.set_state(DshState::Stopped, None);
-    } else {
-        mgr.set_state(DshState::Stopped, None);
-    }
-
-    let status = mgr.status();
-    drop(mgr);
+        mgr.status()
+    };
 
     dsh_log(&app, "dsh stopped");
     let _ = emit(&app, events::DSH_STATUS, status.clone());
@@ -563,19 +573,35 @@ pub fn stop_dsh(app: AppHandle) -> Result<DshStatus, String> {
 // 事件监控（任务完成检测）
 // ========================================================================= //
 
-/// 启动 DSH 事件监控（WebSocket 断线自动重连）
+/// 启动 DSH 事件监控（WebSocket 断线自动重连）。
+/// 使用代数机制保证同一时刻只有一个 watcher 在运行：新 watcher 启动时，
+/// 旧 watcher 会在下一个循环迭代检测到代数落后而退出。
 pub fn start_watcher(app: AppHandle) {
-    static WATCHER_SEQ: AtomicU64 = AtomicU64::new(0);
-    let seq = WATCHER_SEQ.fetch_add(1, Ordering::SeqCst);
+    let seq = {
+        let state: tauri::State<crate::app_state::AppState> = app.state();
+        let mut mgr = state.dsh.lock().unwrap();
+        mgr.watcher_seq += 1;
+        mgr.watcher_seq
+    };
     tauri::async_runtime::spawn(async move {
         watcher_loop(app, seq).await;
     });
 }
 
-async fn watcher_loop(app: AppHandle, _seq: u64) {
+async fn watcher_loop(app: AppHandle, seq: u64) {
     use futures_util::StreamExt;
 
     loop {
+        // 代数检查：已有更新的 watcher 接管时，本任务退出
+        let current_seq = {
+            let state: tauri::State<crate::app_state::AppState> = app.state();
+            let mgr = state.dsh.lock().unwrap();
+            mgr.watcher_seq
+        };
+        if current_seq != seq {
+            return;
+        }
+
         let port = {
             let state: tauri::State<crate::app_state::AppState> = app.state();
             let mgr = state.dsh.lock().unwrap();
@@ -654,55 +680,65 @@ fn handle_host_frame(app: &AppHandle, text: &str) {
                 .and_then(|v| v.as_bool())
                 .unwrap_or(false);
 
-            let state: tauri::State<crate::app_state::AppState> = app.state();
-            let mut mgr = state.dsh.lock().unwrap();
+            // 在锁内完成状态更新并取出“本轮是否结束”的判定结果
+            let outcome: Option<(bool, u64)> = {
+                let state: tauri::State<crate::app_state::AppState> = app.state();
+                let mut mgr = state.dsh.lock().unwrap();
+                let session_key = session_id.to_string();
 
-            let entry = mgr
-                .session_runs
-                .entry(session_id.to_string())
-                .or_insert(SessionRun {
-                    running: false,
-                    errored: false,
-                    since: Instant::now(),
-                });
+                let entry = mgr
+                    .session_runs
+                    .entry(session_key.clone())
+                    .or_insert(SessionRun {
+                        running: false,
+                        errored: false,
+                        since: Instant::now(),
+                    });
 
-            if running {
-                if !entry.running {
-                    entry.running = true;
-                    entry.errored = false;
-                    entry.since = Instant::now();
-                }
-                mgr.running_sessions.insert(session_id.to_string());
-            } else {
-                entry.running = false;
-                let was_in_set = mgr.running_sessions.remove(session_id);
-                // 仅在“确实由 running 转入 idle”且“已无任何运行中的会话”时判定完成
-                if was_in_set && mgr.running_sessions.is_empty() {
+                if running {
+                    if !entry.running {
+                        entry.running = true;
+                        entry.errored = false;
+                        entry.since = Instant::now();
+                    }
+                    mgr.running_sessions.insert(session_key);
+                    None
+                } else {
+                    entry.running = false;
+                    // 先取出 entry 字段，结束对 entry 的借用，再操作集合
                     let errored = entry.errored;
                     let elapsed = entry.since.elapsed().as_millis() as u64;
-                    drop(mgr);
-
-                    if errored {
-                        dsh_log(&app, &format!("task failed (session {})", session_id));
-                        let _ = emit(
-                            &app,
-                            events::DSH_NOTIFY,
-                            serde_json::json!({ "kind": "failed" }),
-                        );
-                    } else if elapsed >= DSH_MIN_RUN_MS {
-                        dsh_log(
-                            &app,
-                            &format!(
-                                "task completed (session {}, ran {}ms)",
-                                session_id, elapsed
-                            ),
-                        );
-                        let _ = emit(
-                            &app,
-                            events::DSH_NOTIFY,
-                            serde_json::json!({ "kind": "completed" }),
-                        );
+                    let was_in_set = mgr.running_sessions.remove(&session_key);
+                    // 仅在“确实由 running 转入 idle”且“已无任何运行中的会话”时判定完成
+                    if was_in_set && mgr.running_sessions.is_empty() {
+                        Some((errored, elapsed))
+                    } else {
+                        None
                     }
+                }
+            };
+
+            if let Some((errored, elapsed)) = outcome {
+                if errored {
+                    dsh_log(&app, &format!("task failed (session {})", session_id));
+                    let _ = emit(
+                        &app,
+                        events::DSH_NOTIFY,
+                        serde_json::json!({ "kind": "failed" }),
+                    );
+                } else if elapsed >= DSH_MIN_RUN_MS {
+                    dsh_log(
+                        &app,
+                        &format!(
+                            "task completed (session {}, ran {}ms)",
+                            session_id, elapsed
+                        ),
+                    );
+                    let _ = emit(
+                        &app,
+                        events::DSH_NOTIFY,
+                        serde_json::json!({ "kind": "completed" }),
+                    );
                 }
             }
         }
@@ -754,7 +790,7 @@ pub fn toggle_dsh_panel(app: &AppHandle) -> Result<(), String> {
 
     let url: tauri::Url = format!("http://127.0.0.1:{}/", port)
         .parse()
-        .map_err(|e| e.to_string())?;
+        .map_err(|e| format!("invalid URL: {}", e))?;
 
     let win = WebviewWindowBuilder::new(app, WINDOW_LABEL_DSH, WebviewUrl::External(url))
         .title("DeepSeek Harness")
@@ -849,7 +885,7 @@ pub fn open_dsh_in_browser(app: &AppHandle) -> Result<(), String> {
     let url = format!("http://127.0.0.1:{}/", port);
     app.opener()
         .open_url(&url, None::<&str>)
-        .map_err(|e| e.to_string())
+        .map_err(|e| format!("{}", e))
 }
 
 // ========================================================================= //

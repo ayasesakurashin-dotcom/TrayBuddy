@@ -1,4 +1,4 @@
-﻿<a id="top"></a>
+<a id="top"></a>
 
 <p align="center">
   <img src="src-tauri/icons/icon.ico" alt="TrayBuddy Logo" width="80" height="80">
@@ -19,13 +19,19 @@
 </p>
 
 <p align="center">
-  <img alt="Version" src="https://img.shields.io/badge/version-0.1.5-blue.svg" />
+  <img alt="Version" src="https://img.shields.io/badge/version-0.2.0-blue.svg" />
+  <img alt="DSH" src="https://img.shields.io/badge/DSH-integrated-deepskyblue.svg" />
   <img alt="License" src="https://img.shields.io/badge/license-MIT-green.svg" />
   <img alt="Platform" src="https://img.shields.io/badge/platform-Windows-lightgrey.svg" />
   <img alt="Tauri" src="https://img.shields.io/badge/Tauri-2-orange.svg" />
   <img alt="Svelte" src="https://img.shields.io/badge/Svelte-5-red.svg" />
   <img alt="Rust" src="https://img.shields.io/badge/Rust-2021-brown.svg" />
 </p>
+
+> **🆕 DeepSeek Harness 联动版**：本仓库在保留 TrayBuddy 全部功能的基础上，
+> 为桌宠接入了 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness)（DSH）——
+> 右键桌宠即可启动/停止 DSH、在桌宠旁弹出 DSH 完整交互界面、
+> 任务完成时播放樱羽艾玛语音提醒。详见 **[README-DSH.md](./README-DSH.md)**。
 
 <br>
 

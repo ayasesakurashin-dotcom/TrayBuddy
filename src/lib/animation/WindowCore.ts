@@ -1261,16 +1261,14 @@ export function createWindowCore(options: {
             }
           }
 
-          if (playSound) {
+          if (playSound && audioManager) {
             try {
               const assets = await invoke<{ completed_audio?: string }>(
                 "dsh_get_assets",
               );
               const path = assets?.completed_audio;
               if (path) {
-                await (audioManager ?? getAudioManager()).playUrl(
-                  convertFileSrc(path),
-                );
+                await audioManager.playUrl(convertFileSrc(path));
               }
             } catch (err) {
               console.warn("[DSH] failed to play completion audio:", err);
