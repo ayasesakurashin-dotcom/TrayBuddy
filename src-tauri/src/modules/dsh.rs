@@ -650,6 +650,7 @@ async fn watcher_loop(app: AppHandle, seq: u64) {
             dsh_log(&app, "dsh server went away (health check failed)");
             let _ = emit(&app, events::DSH_STATUS, status);
             let _ = emit(&app, events::DSH_NOTIFY, serde_json::json!({ "kind": "down" }));
+            close_dsh_panel(&app);
             refresh_tray_menu(&app);
             return;
         }

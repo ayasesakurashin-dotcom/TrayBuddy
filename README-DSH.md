@@ -78,13 +78,24 @@ pnpm install
 # 开发运行
 pnpm tauri dev
 
-# 打包安装包（NSIS）
+# 打包安装包（NSIS，默认 perMachine + 安装语言选择）
 pnpm tauri build
-# 产物：src-tauri/target/release/bundle/nsis/*.exe
-# 直接运行版：src-tauri/target/release/traybuddy.exe
+# 产物：src-tauri/target/release/bundle/nsis/traybuddy_0.2.0_x64-setup.exe
+# 直接运行版：src-tauri/target/release/traybuddy.exe（其同目录资源文件夹需一并携带）
+
+# 免管理员（currentUser）安装包变体
+pnpm tauri build --config '{"bundle":{"windows":{"nsis":{"installMode":"currentUser","languages":[],"displayLanguageSelector":false}}}}'
 ```
 
 发布版 mod 打包流程见 `release.bat`（与上游一致）。
+
+## 🎁 发布产物（本仓库 `release/` 目录）
+
+| 文件 | 说明 |
+| --- | --- |
+| `release/traybuddy_0.2.0_x64-setup.exe` | NSIS 安装包（所有用户 / 需要管理员，含安装语言选择） |
+| `release/traybuddy_0.2.0_x64-setup-user.exe` | NSIS 安装包（当前用户 / 免管理员，可 `/S` 静默安装） |
+| `release/portable/traybuddy.exe` | 免安装直接运行版（连同目录资源文件夹） |
 
 ---
 
