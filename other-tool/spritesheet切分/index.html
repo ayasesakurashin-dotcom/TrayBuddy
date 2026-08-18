@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title data-i18n="title">Sprite Sheet 切分器</title>
+    <link rel="stylesheet" href="style.css">
+    <script src="../i18n-helper.js"></script>
+</head>
+<body>
+    <div class="container">
+        <h1 data-i18n="header_title">✂️ Sprite Sheet 切分器</h1>
+        
+        <div class="main-content">
+            <div class="panel">
+                <h2 data-i18n="import_title">📁 导入 Sprite Sheet</h2>
+                
+                <div class="drop-zone" id="dropZone">
+                    <div class="drop-zone-icon">📂</div>
+                    <p data-i18n="drop_zone_text">拖拽PNG图片到这里<br>或点击选择文件</p>
+                </div>
+                <input type="file" id="fileInput" accept="image/png,image/jpeg,image/webp">
+                
+                <div class="image-info" id="imageInfo">
+                    <div class="title" data-i18n="image_info_title">📐 图片尺寸</div>
+                    <div class="value" id="imageSize">-</div>
+                </div>
+                
+                <button class="btn btn-secondary" id="clearBtn" style="display: none;" data-i18n="clear_btn">清除图片</button>
+                
+                <h2 style="margin-top: 30px;" data-i18n="split_settings_title">⚙️ 切分设置</h2>
+                
+                <div class="form-row">
+                    <div class="form-group">
+                        <label data-i18n="columns_label">列数</label>
+                        <input type="number" id="columns" value="4" min="1" max="100">
+                    </div>
+                    <div class="form-group">
+                        <label data-i18n="rows_label">行数</label>
+                        <input type="number" id="rows" value="4" min="1" max="100">
+                    </div>
+                </div>
+                
+                <div class="calc-info" id="calcInfo">
+                    <div class="title" data-i18n="calc_info_title">📊 计算结果</div>
+                    <div class="value" id="calcValue">-</div>
+                </div>
+                
+                <h2 style="margin-top: 20px;" data-i18n="export_settings_title">💾 导出设置</h2>
+                
+                <div class="form-group">
+                    <label data-i18n="file_prefix_label">文件名前缀</label>
+                    <input type="text" id="filePrefix" value="frame_" placeholder="" data-i18n-placeholder="file_prefix_placeholder">
+
+
+                </div>
+                
+                <div class="checkbox-group">
+                    <input type="checkbox" id="reverseOrder">
+                    <label for="reverseOrder" data-i18n="reverse_order_label">反向排序输出（倒序编号）</label>
+                </div>
+                
+                <button class="btn btn-primary" id="splitBtn" disabled data-i18n="split_btn">切分图片</button>
+                <button class="btn btn-secondary" id="downloadAllBtn" style="display: none;" data-i18n="download_all_btn">📦 打包下载 (ZIP)</button>
+            </div>
+            
+            <div class="panel preview-area">
+                <h2 data-i18n="preview_title">👁️ 预览</h2>
+                <div class="preview-container" id="previewContainer">
+                    <div class="preview-placeholder">
+                        <div class="icon">🖼️</div>
+                        <p data-i18n="preview_placeholder">导入Sprite Sheet后预览</p>
+                    </div>
+                </div>
+                <div class="stats" id="stats" style="display: none;">
+                    <div class="stat-item">
+                        <div class="value" id="statFrames">0</div>
+                        <div class="label" data-i18n="total_frames_label">总帧数</div>
+                    </div>
+                    <div class="stat-item">
+                        <div class="value" id="statFrameSize">0x0</div>
+                        <div class="label" data-i18n="frame_size_label">帧尺寸</div>
+                    </div>
+                    <div class="stat-item">
+                        <div class="value" id="statLayout">0x0</div>
+                        <div class="label" data-i18n="layout_label">布局 (列x行)</div>
+                    </div>
+                </div>
+                <div class="result-grid" id="resultGrid" style="display: none;"></div>
+            </div>
+        </div>
+    </div>
+
+    <script src="/tools-common/vendor/jszip-3.10.1.min.js"></script>
+    <script src="app.js"></script>
+</body>
+</html>

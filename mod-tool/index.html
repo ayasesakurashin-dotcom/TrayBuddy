@@ -1,0 +1,2076 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title data-i18n="title">TrayBuddy Mod Editor</title>
+  <link rel="stylesheet" href="styles.css">
+  <script src="jszip.min.js"></script>
+  <script src="i18n-helper.js"></script>
+</head>
+<body>
+  <div id="app">
+    <!-- 顶部工具栏 -->
+    <header class="toolbar">
+      <div class="toolbar-left">
+        <h1>🎨 <span data-i18n="title">TrayBuddy Mod Editor</span></h1>
+        <span class="mod-name" id="currentModName" data-i18n="mod_not_loaded">未加载 Mod</span>
+      </div>
+      <div class="toolbar-right">
+        <div class="lang-switcher">
+          <button class="lang-btn" data-lang="zh" onclick="setLanguage('zh')" data-i18n="lang_zh">ZH</button>
+          <button class="lang-btn" data-lang="en" onclick="setLanguage('en')" data-i18n="lang_en">EN</button>
+          <button class="lang-btn" data-lang="ja" onclick="setLanguage('ja')" data-i18n="lang_ja">JA</button>
+
+        </div>
+        <a href="tutorial.html" class="btn btn-ghost" style="text-decoration: none;" target="_blank" rel="noopener">📚 <span data-i18n="tutorial">教程</span></a>
+        <a href="introduction.html" class="btn btn-ghost" style="text-decoration: none;" target="_blank" rel="noopener">📖 <span data-i18n="introduction">说明</span></a>
+
+        <div class="dropdown">
+          <button class="btn btn-secondary">📂 <span data-i18n="open_mod">打开 Mod</span></button>
+          <div class="dropdown-content">
+            <button onclick="loadModFolder()">📂 <span data-i18n="open_folder">打开文件夹</span></button>
+            <button onclick="loadModTbuddy()">📦 <span data-i18n="open_tbuddy">打开 .tbuddy</span></button>
+          </div>
+        </div>
+        <button class="btn btn-primary" onclick="createNewMod()">➕ <span data-i18n="new_mod">新建 Mod</span></button>
+        <button class="btn btn-success" onclick="saveMod()" id="saveBtn" disabled>💾 <span data-i18n="save">保存</span></button>
+        <div class="dropdown">
+          <button class="btn btn-info" id="exportBtn" disabled>📦 <span data-i18n="export">导出</span></button>
+          <div class="dropdown-content">
+            <button onclick="saveMod()">📂 <span data-i18n="to_folder">到文件夹</span></button>
+            <button onclick="exportMod()">📦 <span data-i18n="to_tbuddy">到 .tbuddy</span></button>
+            <button id="exportSbuddyBtn" onclick="exportModSbuddy()" style="display:none">🔒 <span data-i18n="to_sbuddy">到 .sbuddy</span></button>
+          </div>
+        </div>
+      </div>
+    </header>
+
+    <!-- 顶部导航标签 -->
+    <nav class="top-nav">
+      <ul class="nav-tabs">
+        <li class="nav-tab active" data-tab="manifest">📋 <span data-i18n="tab_manifest">基础信息</span></li>
+        <li class="nav-tab" data-tab="texts">💬 <span data-i18n="tab_texts">多语言文本</span></li>
+        <li class="nav-tab" data-tab="audio">🔊 <span data-i18n="tab_audio">多语言音频</span></li>
+        <li class="nav-tab" data-tab="assets">🖼️ <span data-i18n="tab_assets">动画</span></li>
+        <li class="nav-tab" data-tab="states-triggers">🎭 <span data-i18n="tab_states_triggers">状态和触发</span></li>
+        <li class="nav-tab" data-tab="bubble">💬 <span data-i18n="tab_bubble">气泡样式</span></li>
+        <li class="nav-tab" data-tab="aitools">🤖 <span data-i18n="tab_aitools">AI 工具</span></li>
+      </ul>
+    </nav>
+
+
+    <!-- 主内容区 -->
+    <main class="main-content">
+      <!-- 内容面板 -->
+      <div class="content-panel">
+        <!-- 空状态 -->
+        <div class="tab-content active" id="tab-empty">
+          <div class="empty-state">
+            <div class="empty-icon">📦</div>
+            <h2 data-i18n="welcome_title">欢迎使用 Mod Editor</h2>
+            <p data-i18n="welcome_desc">点击「打开 Mod」加载现有 Mod 文件夹或 .tbuddy 文件，或点击「新建 Mod」创建一个全新的 Mod</p>
+            <div class="empty-actions">
+              <button class="btn btn-large btn-secondary" onclick="loadModFolder()">📂 <span data-i18n="btn_open_folder">打开 Mod 文件夹</span></button>
+              <button class="btn btn-large btn-info" onclick="loadModTbuddy()">📦 <span data-i18n="btn_open_tbuddy">打开 .tbuddy</span></button>
+              <button class="btn btn-large btn-primary" onclick="createNewMod()">➕ <span data-i18n="btn_create_new">创建新 Mod</span></button>
+            </div>
+            <p style="margin-top: 24px; color: #64748b;">
+              <span data-i18n="first_use_hint">首次使用？查看</span> <a href="introduction.html" style="color: #6366f1;" target="_blank" rel="noopener">📖 <span data-i18n="introduction">说明</span></a>
+              &nbsp;|&nbsp;
+              <a href="tutorial.html" style="color: #6366f1;" target="_blank" rel="noopener">📚 <span data-i18n="tutorial">教程</span></a>
+            </p>
+          </div>
+        </div>
+
+        <!-- 基本信息 Tab -->
+        <div class="tab-content" id="tab-manifest">
+          <div class="panel-header">
+            <h2>📋 <span data-i18n="manifest_title">基础信息</span></h2>
+            <p class="panel-desc" data-i18n="manifest_desc">配置 Mod 的基本信息、角色和边框设置</p>
+          </div>
+          <div class="panel-body">
+            <!-- Mod 基础信息 -->
+            <section class="form-section">
+              <h3 data-i18n="section_mod_info">Mod 信息</h3>
+              <div class="form-grid">
+                <div class="form-group">
+                  <label for="mod-id"><span data-i18n="mod_id_label">Mod ID</span> <span class="required">*</span></label>
+                  <input type="text" id="mod-id" data-i18n-placeholder="placeholder_mod_id" placeholder="" required>
+                  <small data-i18n="mod_id_hint">唯一标识符，只允许英文和数字</small>
+                </div>
+                <div class="form-group">
+                  <label for="mod-version" data-i18n="mod_version_label">版本号</label>
+                  <input type="text" id="mod-version" data-i18n-placeholder="placeholder_mod_version" placeholder="" value="1.0.0">
+                </div>
+                <div class="form-group">
+                  <label for="mod-author" data-i18n="mod_author_label">作者</label>
+                  <input type="text" id="mod-author" data-i18n-placeholder="placeholder_mod_author" placeholder="">
+                </div>
+
+                <div class="form-group">
+                  <label data-i18n="mod_type_display_label">Mod 类型</label>
+                  <input type="text" id="mod-type-display" readonly disabled>
+                </div>
+              </div>
+            </section>
+
+            <!-- 语言设置 -->
+            <section class="form-section">
+              <h3 data-i18n="section_lang_settings">语言设置</h3>
+              <div class="form-grid">
+                <div class="form-group">
+                  <label for="default-audio-lang" data-i18n="default_audio_lang_label">默认音频语言</label>
+                  <input type="text" id="default-audio-lang" data-i18n-placeholder="placeholder_audio_lang" placeholder="">
+                </div>
+                <div class="form-group">
+                  <label for="default-text-lang" data-i18n="default_text_lang_label">默认文本语言</label>
+                  <input type="text" id="default-text-lang" data-i18n-placeholder="placeholder_text_lang" placeholder="">
+                </div>
+
+              </div>
+            </section>
+
+            <!-- 角色配置（仅序列帧 mod 可见） -->
+            <section class="form-section" id="section-character-config">
+              <h3 data-i18n="section_char_config">角色配置</h3>
+              <div class="form-grid">
+                <div class="form-group">
+                  <label for="character-z-offset" data-i18n="char_z_offset_label">Z轴偏移 (渲染层级)</label>
+                  <input type="number" id="character-z-offset" value="1" min="0">
+                </div>
+                <div class="form-group">
+                  <label for="character-canvas-fit-preference" data-i18n="char_canvas_fit_preference_label">Canvas 适配策略</label>
+                  <select id="character-canvas-fit-preference">
+                    <option value="short" data-i18n="char_canvas_fit_short">短边优先（尽量填满）</option>
+                    <option value="long" data-i18n="char_canvas_fit_long">长边优先（完整显示）</option>
+                    <option value="legacy" data-i18n="char_canvas_fit_legacy">旧版（按高度缩放）</option>
+                  </select>
+                  <small data-i18n="char_canvas_fit_preference_hint">控制角色 Canvas 的缩放方式</small>
+                </div>
+              </div>
+            </section>
+
+            <!-- 边框配置（仅序列帧 mod 可见） -->
+            <section class="form-section" id="section-border-config">
+              <h3 data-i18n="section_border_config">边框配置</h3>
+              <div class="form-grid">
+                <div class="form-group">
+                  <label for="border-anima" data-i18n="border_anima_label">边框动画名称</label>
+                  <select id="border-anima">
+                    <option value="" data-i18n="select_anima_placeholder">-- 选择动画 --</option>
+                  </select>
+                </div>
+                <div class="form-group">
+                  <label for="border-enable" data-i18n="border_enable_label">启用边框</label>
+                  <label class="switch">
+                    <input type="checkbox" id="border-enable" checked>
+                    <span class="slider"></span>
+                  </label>
+                </div>
+                <div class="form-group">
+                  <label for="border-z-offset" data-i18n="border_z_offset_label">Z轴偏移</label>
+                  <input type="number" id="border-z-offset" value="2" min="0">
+                </div>
+              </div>
+            </section>
+
+            <!-- 数据面板 -->
+            <section class="form-section">
+              <h3 data-i18n="section_data_panel">数据面板</h3>
+              <div class="form-grid">
+                <div class="form-group">
+                  <label for="show-mod-data-panel" data-i18n="show_mod_data_panel_label">显示 Mod 数据面板</label>
+                  <label class="switch">
+                    <input type="checkbox" id="show-mod-data-panel">
+                    <span class="slider"></span>
+                  </label>
+                  <small data-i18n="show_mod_data_panel_hint">是否显示 Mod Data 面板（供脚本/状态使用）</small>
+                </div>
+                <div class="form-group">
+                  <label for="mod-data-default-int" data-i18n="mod_data_default_int_label">数据默认值 (int)</label>
+                  <input type="number" id="mod-data-default-int" value="0">
+                  <small data-i18n="mod_data_default_int_hint">新建数据计数器时的默认初始值</small>
+                </div>
+              </div>
+            </section>
+
+            <!-- 贴图优化（3D Mod 不适用） -->
+            <section class="form-section" id="section-texture-downsample">
+              <h3 data-i18n="section_texture_downsample">贴图优化</h3>
+              <div class="form-grid">
+                <div class="form-group" id="manifest-texture-downsample-group">
+                  <label for="enable-texture-downsample" data-i18n="enable_texture_downsample_label">启用贴图降采样</label>
+                  <label class="switch">
+                    <input type="checkbox" id="enable-texture-downsample">
+                    <span class="slider"></span>
+                  </label>
+                  <small data-i18n="enable_texture_downsample_hint">影响 Live2D/PngRemix 的贴图解码：开启可降低内存，关闭保留原始清晰度</small>
+                </div>
+
+                <div class="form-group" id="manifest-texture-downsample-start-dim-group">
+                  <label for="texture-downsample-start-dim" data-i18n="texture_downsample_start_dim_label">开始降采样的贴图尺寸</label>
+                  <input type="number" id="texture-downsample-start-dim" value="300" min="0" step="1">
+                  <small data-i18n="texture_downsample_start_dim_hint">仅当贴图最长边 ≥ 该值时才触发降采样；0 表示不限制</small>
+                </div>
+              </div>
+            </section>
+
+            <!-- 键盘设置 -->
+            <section class="form-section">
+              <h3 data-i18n="section_keyboard">键盘设置</h3>
+              <div class="form-grid">
+                <div class="form-group">
+                  <label for="global-keyboard" data-i18n="global_keyboard_label">全局键盘监听</label>
+                  <label class="switch">
+                    <input type="checkbox" id="global-keyboard">
+                    <span class="slider"></span>
+                  </label>
+                  <small data-i18n="global_keyboard_hint">开启后无需聚焦动画窗口即可触发键盘事件</small>
+                </div>
+              </div>
+            </section>
+
+            <!-- 鼠标设置 -->
+            <section class="form-section">
+              <h3 data-i18n="section_mouse">鼠标设置</h3>
+              <div class="form-grid">
+                <div class="form-group">
+                  <label for="global-mouse" data-i18n="global_mouse_label">全局鼠标监听</label>
+                  <label class="switch">
+                    <input type="checkbox" id="global-mouse">
+                    <span class="slider"></span>
+                  </label>
+                  <small data-i18n="global_mouse_hint">开启后鼠标点击任意位置都可触发 global_click / global_right_click 事件</small>
+                </div>
+              </div>
+            </section>
+
+            <!-- PngRemix 参数缩放（仅 PngRemix Mod 生效） -->
+            <section class="form-section" id="section-pngremix-scales">
+              <h3 data-i18n="section_pngremix_scales">PngRemix 参数缩放</h3>
+              <div class="form-grid">
+                <div class="form-group">
+                  <label for="pngremix-follow-amp-scale" data-i18n="pngremix_follow_amp_scale_label">鼠标跟随幅度缩放</label>
+                  <input type="number" id="pngremix-follow-amp-scale" value="1" min="0" max="2" step="0.05">
+                  <small data-i18n="pngremix_follow_amp_scale_hint">仅对 PngRemix 生效；1.0 默认；0.0~2.0 建议范围（越小跟随越弱）</small>
+                </div>
+                <div class="form-group">
+                  <label for="pngremix-motion-amp-scale" data-i18n="pngremix_motion_amp_scale_label">摆动幅度缩放</label>
+                  <input type="number" id="pngremix-motion-amp-scale" value="1" min="0" max="2" step="0.05">
+                  <small data-i18n="pngremix_motion_amp_scale_hint">缩放 xAmp/yAmp、wiggle_amp、stretchAmount、rdragStr 等；1.0 默认；0.0~2.0</small>
+                </div>
+                <div class="form-group">
+                  <label for="pngremix-motion-frq-scale" data-i18n="pngremix_motion_frq_scale_label">摆动频率缩放</label>
+                  <input type="number" id="pngremix-motion-frq-scale" value="1" min="0" max="2" step="0.05">
+                  <small data-i18n="pngremix_motion_frq_scale_hint">缩放 xFrq/yFrq、wiggle_freq、rot_frq 等；1.0 默认；0.0~2.0（越小越慢）</small>
+                </div>
+              </div>
+            </section>
+
+            <!-- 预览图 -->
+            <section class="form-section">
+              <h3 data-i18n="section_preview">预览图</h3>
+              <div class="preview-upload">
+                <div class="preview-image" id="preview-image">
+                  <span class="preview-placeholder" data-i18n="preview_placeholder">点击上传预览图</span>
+                </div>
+                <input type="file" id="preview-file" accept="image/png,image/jpeg,image/jpg,image/webp" hidden>
+                <button class="btn btn-secondary" onclick="document.getElementById('preview-file').click()" data-i18n="select_image_btn">选择图片</button>
+              </div>
+            </section>
+
+            <!-- 图标 -->
+            <section class="form-section">
+              <h3 data-i18n="section_icon">图标</h3>
+              <div class="preview-upload">
+                <div class="preview-image icon-preview" id="icon-image">
+                  <span class="preview-placeholder" data-i18n="icon_placeholder">点击上传图标</span>
+                </div>
+                <input type="file" id="icon-file" accept=".ico,image/x-icon" hidden>
+                <button class="btn btn-secondary" onclick="document.getElementById('icon-file').click()" data-i18n="select_icon_btn">选择图标</button>
+                <small data-i18n="icon_hint">可选，用于托盘图标显示 (icon.ico)</small>
+              </div>
+            </section>
+          </div>
+        </div>
+
+
+        <!-- 状态和触发 Tab -->
+        <div class="tab-content" id="tab-states-triggers">
+          <div class="panel-header">
+            <h2>🎭 <span data-i18n="states_triggers_title">状态和触发</span></h2>
+            <p class="panel-desc" data-i18n="states_triggers_desc">管理角色的各种状态、对话分支以及事件触发逻辑</p>
+          </div>
+          <div class="panel-body">
+            <!-- 核心状态 -->
+            <details class="form-section section-details" id="states-core-details" open>
+              <summary class="section-header">
+                <h3><span class="section-collapse-arrow" aria-hidden="true"></span><span data-i18n="section_core_states">核心状态</span></h3>
+              </summary>
+
+              <div class="important-states-list" id="core-states-list">
+                <!-- 由 JS 动态填充 -->
+              </div>
+            </details>
+
+            <!-- 重要状态 -->
+            <details class="form-section section-details" id="states-important-details">
+              <summary class="section-header">
+                <h3><span class="section-collapse-arrow" aria-hidden="true"></span><span data-i18n="section_important_states">重要状态</span></h3>
+              </summary>
+
+              <div class="list-filters">
+                <div class="form-group">
+                  <label data-i18n="filter_by_name">按名称筛选</label>
+                  <input type="text" id="states-important-filter-name" data-i18n-placeholder="placeholder_filter_name" placeholder="" oninput="renderStates()">
+                </div>
+                <div class="form-group">
+                  <label data-i18n="filter_by_anima">按关联动画筛选</label>
+                  <input type="text" id="states-important-filter-anima" data-i18n-placeholder="placeholder_filter_contains" placeholder="" oninput="renderStates()">
+                </div>
+                <div class="form-group">
+                  <label data-i18n="filter_by_audio">按关联音频筛选</label>
+                  <input type="text" id="states-important-filter-audio" data-i18n-placeholder="placeholder_filter_contains" placeholder="" oninput="renderStates()">
+                </div>
+                <div class="form-group">
+                  <label data-i18n="filter_by_text">按关联文本筛选</label>
+                  <input type="text" id="states-important-filter-text" data-i18n-placeholder="placeholder_filter_contains" placeholder="" oninput="renderStates()">
+                </div>
+
+              </div>
+
+              <div class="important-states-list" id="important-states-list">
+                <!-- 由 JS 动态填充 -->
+              </div>
+            </details>
+
+            <!-- 状态列表 -->
+            <details class="form-section section-details" id="states-normal-details" open>
+              <summary class="section-header">
+                <h3><span class="section-collapse-arrow" aria-hidden="true"></span><span data-i18n="section_state_list">普通状态列表</span></h3>
+                <div class="section-actions">
+                  <button class="btn btn-sm btn-ghost" onclick="pasteStateFromClipboard()">📋 <span data-i18n="btn_paste_from_clipboard">粘贴</span></button>
+                  <button class="btn btn-sm btn-secondary" onclick="openImportStatesFromMod()">📥 <span data-i18n="btn_import_states_from_mod">从其他Mod导入</span></button>
+                  <button class="btn btn-sm btn-primary" onclick="addState()">➕ <span data-i18n="btn_add_state">添加状态</span></button>
+                  <button class="btn btn-sm btn-danger" onclick="deleteAllStates()">🗑️ <span data-i18n="btn_delete_all">全部删除</span></button>
+                </div>
+              </summary>
+
+              <div class="list-filters">
+                <div class="form-group">
+                  <label data-i18n="filter_by_name">按名称筛选</label>
+                  <input type="text" id="states-normal-filter-name" data-i18n-placeholder="placeholder_filter_name" placeholder="" oninput="renderStates()">
+                </div>
+                <div class="form-group">
+                  <label data-i18n="filter_by_anima">按关联动画筛选</label>
+                  <input type="text" id="states-normal-filter-anima" data-i18n-placeholder="placeholder_filter_contains" placeholder="" oninput="renderStates()">
+                </div>
+                <div class="form-group">
+                  <label data-i18n="filter_by_audio">按关联音频筛选</label>
+                  <input type="text" id="states-normal-filter-audio" data-i18n-placeholder="placeholder_filter_contains" placeholder="" oninput="renderStates()">
+                </div>
+                <div class="form-group">
+                  <label data-i18n="filter_by_text">按关联文本筛选</label>
+                  <input type="text" id="states-normal-filter-text" data-i18n-placeholder="placeholder_filter_contains" placeholder="" oninput="renderStates()">
+                </div>
+
+              </div>
+
+              <div class="state-list" id="state-list">
+                <!-- 由 JS 动态填充 -->
+              </div>
+            </details>
+
+            <!-- 触发器 -->
+            <details class="form-section section-details" id="triggers-details" open>
+              <summary class="section-header">
+                <h3><span class="section-collapse-arrow" aria-hidden="true"></span><span data-i18n="section_triggers">触发器 (事件响应)</span></h3>
+                <div class="section-actions">
+                  <button class="btn btn-sm btn-ghost" onclick="pasteTriggerFromClipboard()">📋 <span data-i18n="btn_paste_from_clipboard">粘贴</span></button>
+                  <button class="btn btn-sm btn-secondary" onclick="openImportTriggersFromMod()">📥 <span data-i18n="btn_import_triggers_from_mod">从其他Mod导入</span></button>
+                  <button class="btn btn-sm btn-primary" onclick="addTrigger()">➕ <span data-i18n="btn_add_trigger">添加触发器</span></button>
+                  <button class="btn btn-sm btn-danger" onclick="deleteAllTriggers()">🗑️ <span data-i18n="btn_delete_all">全部删除</span></button>
+                </div>
+              </summary>
+
+              <div class="list-filters">
+                <div class="form-group">
+                  <label data-i18n="filter_by_name">按名称筛选</label>
+                  <input type="text" id="triggers-filter-name" data-i18n-placeholder="placeholder_filter_name" placeholder="" oninput="renderTriggers()">
+                </div>
+
+              </div>
+
+              <div class="trigger-list" id="trigger-list">
+                <!-- 由 JS 动态填充 -->
+              </div>
+            </details>
+
+            <section class="form-section">
+              <h3 data-i18n="section_event_docs">事件类型说明</h3>
+              <div class="event-docs">
+                <div class="event-doc-item"><code>click</code> <span data-i18n="event_click">点击角色</span></div>
+                <div class="event-doc-item"><code>click_up</code> <span data-i18n="event_click_up">左键松开（窗口内）</span></div>
+                <div class="event-doc-item"><code>right_click</code> <span data-i18n="event_right_click">右键点击角色</span></div>
+                <div class="event-doc-item"><code>right_click_up</code> <span data-i18n="event_right_click_up">右键松开（窗口内）</span></div>
+
+                <div class="event-doc-item"><code>global_click</code> <span data-i18n="event_global_click">全局左键点击（需开启全局鼠标监听）</span></div>
+                <div class="event-doc-item"><code>global_click_up</code> <span data-i18n="event_global_click_up">全局左键松开（需开启全局鼠标监听）</span></div>
+                <div class="event-doc-item"><code>global_right_click</code> <span data-i18n="event_global_right_click">全局右键点击（需开启全局鼠标监听）</span></div>
+                <div class="event-doc-item"><code>global_right_click_up</code> <span data-i18n="event_global_right_click_up">全局右键松开（需开启全局鼠标监听）</span></div>
+
+                <div class="event-doc-item"><code>global_keydown</code> <span data-i18n="event_global_keydown">全局键盘按下（任意键，需开启全局键盘监听）</span></div>
+                <div class="event-doc-item"><code>global_keyup</code> <span data-i18n="event_global_keyup">全局键盘松开（任意键，需开启全局键盘监听）</span></div>
+                <div class="event-doc-item"><code>keydown:&lt;Key&gt;</code> <span data-i18n="event_keydown_space">按键按下触发（例如：keydown:Space）</span></div>
+                <div class="event-doc-item"><code>keyup:&lt;Key&gt;</code> <span data-i18n="event_keyup_space">按键松开触发（例如：keyup:Space）</span></div>
+
+                <div class="event-doc-item"><code>login</code> <span data-i18n="event_login">启动/登录</span></div>
+                <div class="event-doc-item"><code>drag_start</code> <span data-i18n="event_drag_start">开始拖动窗口</span></div>
+                <div class="event-doc-item"><code>drag_end</code> <span data-i18n="event_drag_end">结束拖动窗口</span></div>
+                <div class="event-doc-item"><code>birthday</code> <span data-i18n="event_birthday">生日事件</span></div>
+                <div class="event-doc-item"><code>firstday</code> <span data-i18n="event_firstday">首次启动事件</span></div>
+                <div class="event-doc-item"><code>login_silence</code> <span data-i18n="event_login_silence">启动后进入静默/无声状态</span></div>
+                <div class="event-doc-item"><code>music_start</code> <span data-i18n="event_music_start">音乐播放</span></div>
+                <div class="event-doc-item"><code>music_end</code> <span data-i18n="event_music_end">音乐停止</span></div>
+                <div class="event-doc-item"><code>work</code> <span data-i18n="event_work">工作事件</span></div>
+
+              </div>
+            </section>
+          </div>
+        </div>
+
+        <!-- 动画资源 Tab -->
+        <div class="tab-content" id="tab-assets">
+          <div class="panel-header">
+            <h2>🖼️ <span data-i18n="assets_title">动画资源</span></h2>
+            <p class="panel-desc" id="assets-desc-text" data-i18n="assets_desc">管理序列帧动画和静态图片资源</p>
+          </div>
+          <div class="panel-body">
+
+            <!-- 序列帧动画 (仅 sequence 类型显示) -->
+            <div id="assets-sequence-section">
+            <details class="form-section section-details" id="assets-sequence-details" open>
+              <summary class="section-header">
+                <h3><span class="section-collapse-arrow" aria-hidden="true"></span><span data-i18n="section_sequence">序列帧动画 (sequence.json)</span></h3>
+                <div class="section-actions">
+                  <button class="btn btn-sm btn-secondary" id="assets-sequence-import-btn" onclick="importAssetEntries('sequence')">⬇️ <span data-i18n="btn_import_assets">一键导入</span></button>
+                  <button class="btn btn-sm btn-secondary" id="assets-sequence-import-file-btn" onclick="importSingleAssetEntry('sequence')">📥 <span data-i18n="btn_import_file">导入</span></button>
+                  <button class="btn btn-sm btn-ghost" onclick="pasteAssetFromClipboard('sequence')">📋 <span data-i18n="btn_paste_from_clipboard">粘贴</span></button>
+                  <button class="btn btn-sm btn-primary" onclick="addAsset('sequence')">➕ <span data-i18n="btn_add_animation">添加动画</span></button>
+                </div>
+              </summary>
+
+              <div class="list-filters">
+                <div class="form-group">
+                  <label data-i18n="filter_by_name">按名称筛选</label>
+                  <input type="text" id="assets-sequence-filter-name" data-i18n-placeholder="placeholder_filter_name" placeholder="" oninput="renderAssets()">
+                </div>
+                <div class="form-group">
+                  <label data-i18n="filter_by_path">路径包含</label>
+                  <input type="text" id="assets-sequence-filter-path" data-i18n-placeholder="placeholder_filter_path" placeholder="" oninput="renderAssets()">
+                </div>
+
+              </div>
+
+              <div class="asset-list" id="sequence-list">
+                <!-- 由 JS 动态填充 -->
+              </div>
+            </details>
+
+            <!-- 杂图 -->
+            <details class="form-section section-details" id="assets-img-details" open>
+              <summary class="section-header">
+                <h3><span class="section-collapse-arrow" aria-hidden="true"></span><span data-i18n="section_img">杂图资源 (img.json)</span></h3>
+                <div class="section-actions">
+                  <button class="btn btn-sm btn-secondary" id="assets-img-import-btn" onclick="importAssetEntries('img')">⬇️ <span data-i18n="btn_import_assets">一键导入</span></button>
+                  <button class="btn btn-sm btn-secondary" id="assets-img-import-file-btn" onclick="importSingleAssetEntry('img')">📥 <span data-i18n="btn_import_file">导入</span></button>
+                  <button class="btn btn-sm btn-ghost" onclick="pasteAssetFromClipboard('img')">📋 <span data-i18n="btn_paste_from_clipboard">粘贴</span></button>
+                  <button class="btn btn-sm btn-primary" onclick="addAsset('img')">➕ <span data-i18n="btn_add_img">添加图片</span></button>
+                </div>
+              </summary>
+
+              <div class="list-filters">
+                <div class="form-group">
+                  <label data-i18n="filter_by_name">按名称筛选</label>
+                  <input type="text" id="assets-img-filter-name" data-i18n-placeholder="placeholder_filter_name" placeholder="" oninput="renderAssets()">
+                </div>
+                <div class="form-group">
+                  <label data-i18n="filter_by_path">路径包含</label>
+                  <input type="text" id="assets-img-filter-path" data-i18n-placeholder="placeholder_filter_path" placeholder="" oninput="renderAssets()">
+                </div>
+
+              </div>
+
+              <div class="asset-list" id="img-list">
+                <!-- 由 JS 动态填充 -->
+              </div>
+            </details>
+            </div>
+
+            <!-- Live2D 编辑区 (仅 live2d 类型显示) -->
+            <div id="assets-live2d-section" style="display:none;">
+
+              <!-- 同步按钮 -->
+              <div class="section-actions" style="margin-bottom: 12px;">
+                <button class="btn btn-secondary" onclick="importLive2dFolder()">📂 <span data-i18n="btn_import_live2d_folder">导入文件夹</span></button>
+                <button class="btn btn-secondary" onclick="syncLive2dConfigFromFiles()">🔄 <span data-i18n="btn_sync_config_from_files">从文件同步配置</span></button>
+                <button class="btn btn-secondary" onclick="syncLive2dAssetsFromFiles()">🔄 <span data-i18n="btn_sync_assets_from_files">从文件同步资产</span></button>
+                <button class="btn btn-secondary" onclick="generateKeyboardEventsFromFiles()">⌨️ <span data-i18n="btn_gen_keyboard_events">从文件生成输入事件</span></button>
+              </div>
+
+              <!-- 模型配置 -->
+              <details class="form-section section-details" open>
+                <summary class="section-header">
+                  <h3><span class="section-collapse-arrow" aria-hidden="true"></span><span data-i18n="section_live2d_model">模型配置 (live2d.json - model)</span></h3>
+                </summary>
+                <div class="form-grid">
+                  <div class="form-group">
+                    <label data-i18n="live2d_model_name_label">模型名称</label>
+                    <input type="text" id="live2d-model-name" data-i18n-placeholder="placeholder_live2d_model_name" placeholder="">
+                  </div>
+                  <div class="form-group">
+                    <label data-i18n="live2d_base_dir_label">模型基础目录</label>
+                    <input type="text" id="live2d-base-dir" data-i18n-placeholder="placeholder_live2d_base_dir" placeholder="">
+                    <small data-i18n="live2d_base_dir_hint">Live2D 模型文件所在目录（相对于 Mod 根目录）</small>
+                  </div>
+                  <div class="form-group">
+                    <label data-i18n="live2d_model_json_label">模型定义文件</label>
+                    <input type="text" id="live2d-model-json" data-i18n-placeholder="placeholder_live2d_model_json" placeholder="">
+                  </div>
+
+                  <div class="form-group">
+                    <label data-i18n="live2d_model_scale_label">模型缩放 (scale)</label>
+                    <input type="number" id="live2d-model-scale" value="1" min="0.01" step="0.05">
+                    <small data-i18n="live2d_model_scale_hint">整体缩放系数，避免模型太大超出窗口范围</small>
+                  </div>
+                  <div class="form-group">
+                    <label data-i18n="live2d_textures_dir_label">纹理目录</label>
+                    <input type="text" id="live2d-textures-dir" placeholder="">
+                  </div>
+                  <div class="form-group">
+                    <label data-i18n="live2d_motions_dir_label">动作目录</label>
+                    <input type="text" id="live2d-motions-dir" value="motions">
+                  </div>
+                  <div class="form-group">
+                    <label data-i18n="live2d_expressions_dir_label">表情目录</label>
+                    <input type="text" id="live2d-expressions-dir" value="expressions">
+                  </div>
+                  <div class="form-group">
+                    <label data-i18n="live2d_physics_json_label">物理文件</label>
+                    <input type="text" id="live2d-physics-json" placeholder="">
+                  </div>
+                  <div class="form-group">
+                    <label data-i18n="live2d_pose_json_label">姿势文件</label>
+                    <input type="text" id="live2d-pose-json" placeholder="">
+                  </div>
+                  <div class="form-group">
+                    <label data-i18n="live2d_breath_json_label">呼吸文件</label>
+                    <input type="text" id="live2d-breath-json" placeholder="">
+                    <small data-i18n="live2d_breath_json_hint">呼吸动画配置文件（如 breath.json）</small>
+                  </div>
+                  <div class="form-group">
+                    <label data-i18n="live2d_eye_blink_label">启用眨眼</label>
+                    <label class="switch">
+                      <input type="checkbox" id="live2d-eye-blink" checked>
+                      <span class="slider"></span>
+                    </label>
+                  </div>
+                  <div class="form-group">
+                    <label data-i18n="live2d_lip_sync_label">启用口型同步</label>
+                    <label class="switch">
+                      <input type="checkbox" id="live2d-lip-sync" checked>
+                      <span class="slider"></span>
+                    </label>
+                  </div>
+                </div>
+              </details>
+
+              <!-- 动作列表 -->
+              <details class="form-section section-details" open>
+                <summary class="section-header">
+                  <h3><span class="section-collapse-arrow" aria-hidden="true"></span><span data-i18n="section_live2d_motions">动作列表 (motions)</span></h3>
+                  <div class="section-actions">
+                    <button class="btn btn-sm btn-primary" onclick="addLive2dMotion()">➕ <span data-i18n="btn_add_motion">添加动作</span></button>
+                  </div>
+                </summary>
+                <div class="list-filters">
+                  <div class="form-group">
+                    <label data-i18n="filter_by_name">按名称筛选</label>
+                    <input type="text" id="live2d-motions-filter-name" data-i18n-placeholder="placeholder_filter_name" placeholder="" oninput="renderLive2dAssets()">
+                  </div>
+                  <div class="form-group">
+                    <label data-i18n="filter_by_file">按文件筛选</label>
+                    <input type="text" id="live2d-motions-filter-file" data-i18n-placeholder="placeholder_filter_file" placeholder="" oninput="renderLive2dAssets()">
+                  </div>
+
+                </div>
+                <div class="asset-list" id="live2d-motions-list">
+                  <!-- 由 JS 动态填充 -->
+                </div>
+              </details>
+
+              <!-- 表情列表 -->
+              <details class="form-section section-details" open>
+                <summary class="section-header">
+                  <h3><span class="section-collapse-arrow" aria-hidden="true"></span><span data-i18n="section_live2d_expressions">表情列表 (expressions)</span></h3>
+                  <div class="section-actions">
+                    <button class="btn btn-sm btn-primary" onclick="addLive2dExpression()">➕ <span data-i18n="btn_add_expression">添加表情</span></button>
+                  </div>
+                </summary>
+                <div class="list-filters">
+                  <div class="form-group">
+                    <label data-i18n="filter_by_name">按名称筛选</label>
+                    <input type="text" id="live2d-expressions-filter-name" data-i18n-placeholder="placeholder_filter_name" placeholder="" oninput="renderLive2dAssets()">
+                  </div>
+                  <div class="form-group">
+                    <label data-i18n="filter_by_file">按文件筛选</label>
+                    <input type="text" id="live2d-expressions-filter-file" data-i18n-placeholder="placeholder_filter_file" placeholder="" oninput="renderLive2dAssets()">
+                  </div>
+
+                </div>
+                <div class="asset-list" id="live2d-expressions-list">
+                  <!-- 由 JS 动态填充 -->
+                </div>
+              </details>
+
+              <!-- 背景/叠加图层 -->
+              <details class="form-section section-details">
+                <summary class="section-header">
+                  <h3><span class="section-collapse-arrow" aria-hidden="true"></span><span data-i18n="section_live2d_bg_layers">背景/叠加图层 (background_layers)</span></h3>
+                  <div class="section-actions">
+                    <button class="btn btn-sm btn-primary" onclick="addLive2dBgLayer()">➕ <span data-i18n="btn_add_bg_layer">添加图层</span></button>
+                  </div>
+                </summary>
+                <small class="section-hint" data-i18n="live2d_bg_layers_hint">配置在 Live2D 模型下方或上方渲染的图片层，用于静态背景、按键高亮叠加等</small>
+                <div class="list-filters">
+                  <div class="form-group">
+                    <label data-i18n="filter_by_name">按名称筛选</label>
+                    <input type="text" id="live2d-bg-layers-filter-name" data-i18n-placeholder="placeholder_filter_name" placeholder="" oninput="renderLive2dAssets()">
+                  </div>
+                  <div class="form-group">
+                    <label data-i18n="filter_by_dir">按目录筛选</label>
+                    <input type="text" id="live2d-bg-layers-filter-dir" data-i18n-placeholder="placeholder_filter_dir" placeholder="" oninput="renderLive2dAssets()">
+                  </div>
+
+                </div>
+                <div class="asset-list" id="live2d-bg-layers-list">
+                  <!-- 由 JS 动态填充 -->
+                </div>
+              </details>
+
+              <!-- 状态-动画映射 -->
+              <details class="form-section section-details" open>
+                <summary class="section-header">
+                  <h3><span class="section-collapse-arrow" aria-hidden="true"></span><span data-i18n="section_live2d_states">状态-动画映射 (states)</span></h3>
+                  <div class="section-actions">
+                    <button class="btn btn-sm btn-primary" onclick="addLive2dState()">➕ <span data-i18n="btn_add_live2d_state">添加映射</span></button>
+                  </div>
+                </summary>
+                <small class="section-hint" data-i18n="live2d_states_hint">将 Mod 的状态名称映射到 Live2D 动作和表情</small>
+                <div class="list-filters">
+                  <div class="form-group">
+                    <label data-i18n="filter_by_name">按名称筛选</label>
+                    <input type="text" id="live2d-states-filter-name" data-i18n-placeholder="placeholder_filter_name" placeholder="" oninput="renderLive2dAssets()">
+                  </div>
+                  <div class="form-group">
+                    <label data-i18n="filter_by_motion">按动作筛选</label>
+                    <input type="text" id="live2d-states-filter-motion" data-i18n-placeholder="placeholder_filter_motion" placeholder="" oninput="renderLive2dAssets()">
+                  </div>
+                  <div class="form-group">
+                    <label data-i18n="filter_by_expression">按表情筛选</label>
+                    <input type="text" id="live2d-states-filter-expression" data-i18n-placeholder="placeholder_filter_expression" placeholder="" oninput="renderLive2dAssets()">
+                  </div>
+
+                </div>
+                <div class="asset-list" id="live2d-states-list">
+                  <!-- 由 JS 动态填充 -->
+                </div>
+              </details>
+
+              <!-- Live2D 参数浏览器 -->
+              <details class="form-section section-details" id="live2d-params-browser-section">
+                <summary class="section-header">
+                  <h3><span class="section-collapse-arrow" aria-hidden="true"></span><span data-i18n="params_browser_title">模型参数浏览器 (Parameters)</span></h3>
+                  <div class="section-actions">
+                    <button class="btn btn-sm btn-secondary" onclick="loadLive2dParamsBrowser()"><span data-i18n="params_browser_load_btn">🔄 从文件读取</span></button>
+                  </div>
+                </summary>
+                <small class="section-hint" data-i18n="params_browser_hint">显示 cdi3.json 中定义的所有 Live2D 模型参数，按分组折叠展示</small>
+                <div id="live2d-params-browser-content">
+                  <p style="color: var(--text-secondary); font-style: italic; padding: 8px 0;" data-i18n="params_browser_placeholder">点击「从文件读取」加载模型参数信息</p>
+                </div>
+              </details>
+
+            </div>
+
+            <!-- 3D 编辑区 (仅 threed 类型显示) -->
+            <div id="assets-threed-section" style="display:none;">
+
+              <!-- 同步按钮 -->
+              <div class="section-actions" style="margin-bottom: 12px;">
+                <button class="btn btn-secondary" onclick="importThreeDFolder()">📂 <span data-i18n="btn_import_threed_folder">导入文件夹</span></button>
+                <button class="btn btn-secondary" onclick="syncThreeDConfigFromFiles()">🔄 <span data-i18n="btn_sync_threed_config">从文件同步配置</span></button>
+                <button class="btn btn-secondary" onclick="syncThreeDAssetsFromFiles()">🔄 <span data-i18n="btn_sync_threed_assets">从文件同步资源</span></button>
+              </div>
+
+              <!-- 模型配置 -->
+              <details class="form-section section-details" open>
+                <summary class="section-header">
+                  <h3><span class="section-collapse-arrow" aria-hidden="true"></span><span data-i18n="section_threed_model">模型配置 (3d.json - model)</span></h3>
+                </summary>
+                <div class="form-grid">
+                  <div class="form-group">
+                    <label data-i18n="threed_model_name_label">模型名称</label>
+                    <input type="text" id="threed-model-name" data-i18n-placeholder="placeholder_threed_model_name" placeholder="">
+                  </div>
+                  <div class="form-group">
+                    <label data-i18n="threed_model_type_label">模型类型</label>
+                    <select id="threed-model-type">
+                      <option value="vrm">VRM</option>
+                      <option value="pmx">PMX</option>
+                    </select>
+                    <small data-i18n="threed_model_type_hint">支持 VRM 和 PMX 格式</small>
+                  </div>
+                  <div class="form-group">
+                    <label data-i18n="threed_model_file_label">模型文件</label>
+                    <input type="text" id="threed-model-file" data-i18n-placeholder="placeholder_threed_model_file" placeholder="">
+                    <small data-i18n="threed_model_file_hint">模型文件路径（相对于 Mod 根目录）</small>
+                  </div>
+
+                  <div class="form-group">
+                    <label data-i18n="threed_model_scale_label">模型缩放 (scale)</label>
+                    <input type="number" id="threed-model-scale" value="1" min="0.01" step="0.05">
+                    <small data-i18n="threed_model_scale_hint">整体缩放系数（默认 1）</small>
+                  </div>
+                  <div class="form-group">
+                    <label data-i18n="threed_model_offset_x_label">X 偏移 (offset_x)</label>
+                    <input type="number" id="threed-model-offset-x" value="0" step="0.01">
+                  </div>
+                  <div class="form-group">
+                    <label data-i18n="threed_model_offset_y_label">Y 偏移 (offset_y)</label>
+                    <input type="number" id="threed-model-offset-y" value="0" step="0.01">
+                  </div>
+                  <div class="form-group">
+                    <label data-i18n="threed_texture_base_dir_label">纹理基础目录</label>
+                    <input type="text" id="threed-texture-base-dir" placeholder="">
+                    <small data-i18n="threed_texture_base_dir_hint">可选，纹理文件所在目录</small>
+                  </div>
+                  <div class="form-group">
+                    <label data-i18n="threed_animation_base_dir_label">动画基础目录</label>
+                    <input type="text" id="threed-animation-base-dir" placeholder="">
+                    <small data-i18n="threed_animation_base_dir_hint">可选，动画文件所在目录（如 asset/3d/animations）</small>
+                  </div>
+                </div>
+              </details>
+
+              <!-- 动画列表 -->
+              <details class="form-section section-details" open>
+                <summary class="section-header">
+                  <h3><span class="section-collapse-arrow" aria-hidden="true"></span><span data-i18n="section_threed_animations">动画列表 (animations)</span></h3>
+                  <div class="section-actions">
+                    <button class="btn btn-sm btn-primary" onclick="addThreeDAnimation()">➕ <span data-i18n="btn_add_threed_animation">添加动画</span></button>
+                  </div>
+                </summary>
+                <div class="list-filters">
+                  <div class="form-group">
+                    <label data-i18n="filter_by_name">按名称筛选</label>
+                    <input type="text" id="threed-animations-filter-name" data-i18n-placeholder="placeholder_filter_name" placeholder="" oninput="renderThreeDAssets()">
+                  </div>
+                  <div class="form-group">
+                    <label data-i18n="filter_by_file">按文件筛选</label>
+                    <input type="text" id="threed-animations-filter-file" data-i18n-placeholder="placeholder_filter_file" placeholder="" oninput="renderThreeDAssets()">
+                  </div>
+
+                </div>
+                <div class="asset-list" id="threed-animations-list">
+                  <!-- 由 JS 动态填充 -->
+                </div>
+              </details>
+
+            </div>
+
+            <!-- PngRemix 编辑区 (仅 pngremix 类型显示) -->
+            <div id="assets-pngremix-section" style="display:none;">
+
+              <!-- 同步按钮 -->
+              <div class="section-actions" style="margin-bottom: 12px;">
+                <button class="btn btn-secondary" onclick="importPngRemixFile()">📂 <span data-i18n="btn_import_pngremix_file">导入文件</span></button>
+                <button class="btn btn-secondary" onclick="syncPngRemixConfigFromFiles()">🔄 <span data-i18n="btn_sync_config_from_files">从文件同步配置</span></button>
+                <button class="btn btn-secondary" onclick="syncPngRemixAssetsFromFiles()">🔄 <span data-i18n="btn_sync_assets_from_files">从文件同步资产</span></button>
+              </div>
+
+              <!-- 模型配置 -->
+              <details class="form-section section-details" open>
+                <summary class="section-header">
+                  <h3><span class="section-collapse-arrow" aria-hidden="true"></span><span data-i18n="section_pngremix_model">模型配置 (pngremix.json - model)</span></h3>
+                </summary>
+                <div class="form-grid">
+                  <div class="form-group">
+                    <label data-i18n="pngremix_model_name_label">模型名称</label>
+                    <input type="text" id="pngremix-model-name" data-i18n-placeholder="placeholder_pngremix_model_name" placeholder="">
+                  </div>
+                  <div class="form-group">
+                    <label data-i18n="pngremix_file_label">.pngRemix 文件路径</label>
+                    <input type="text" id="pngremix-model-file" data-i18n-placeholder="placeholder_pngremix_file" placeholder="">
+                    <small data-i18n="pngremix_file_hint">.pngRemix 文件相对于 Mod 根目录的路径</small>
+                  </div>
+
+                  <div class="form-group">
+                    <label data-i18n="pngremix_default_state_label">默认 State 索引</label>
+                    <input type="number" id="pngremix-default-state-index" value="0" min="0">
+                    <small data-i18n="pngremix_default_state_hint">初始时使用的 pngRemix state 索引（默认 0）</small>
+                  </div>
+                  <div class="form-group">
+                    <label data-i18n="pngremix_model_scale_label">模型缩放 (scale)</label>
+                    <input type="number" id="pngremix-model-scale" value="1" min="0.01" step="0.05">
+                    <small data-i18n="pngremix_model_scale_hint">整体缩放系数，配合窗口尺寸调整，避免模型超出窗口</small>
+                  </div>
+                  <div class="form-group">
+                    <label data-i18n="pngremix_max_fps_label">帧率上限</label>
+                    <input type="number" id="pngremix-max-fps" value="60" min="1" max="120">
+                  </div>
+                </div>
+              </details>
+
+              <!-- 特性开关 -->
+              <details class="form-section section-details" open>
+                <summary class="section-header">
+                  <h3><span class="section-collapse-arrow" aria-hidden="true"></span><span data-i18n="section_pngremix_features">特性开关 (features)</span></h3>
+                </summary>
+                <div class="form-grid">
+                  <div class="form-group">
+                    <label data-i18n="pngremix_mouse_follow_label">鼠标跟随</label>
+                    <label class="switch">
+                      <input type="checkbox" id="pngremix-mouse-follow" checked>
+                      <span class="slider"></span>
+                    </label>
+                  </div>
+                  <div class="form-group">
+                    <label data-i18n="pngremix_auto_blink_label">自动眨眼</label>
+                    <label class="switch">
+                      <input type="checkbox" id="pngremix-auto-blink" checked>
+                      <span class="slider"></span>
+                    </label>
+                  </div>
+                  <div class="form-group">
+                    <label data-i18n="pngremix_click_bounce_label">点击跳跃</label>
+                    <label class="switch">
+                      <input type="checkbox" id="pngremix-click-bounce" checked>
+                      <span class="slider"></span>
+                    </label>
+                  </div>
+                  <div class="form-group">
+                    <label data-i18n="pngremix_click_bounce_amp_label">跳跃幅度 (px)</label>
+                    <input type="number" id="pngremix-click-bounce-amp" value="50" min="0">
+                  </div>
+                  <div class="form-group">
+                    <label data-i18n="pngremix_click_bounce_duration_label">跳跃时长 (秒)</label>
+                    <input type="number" id="pngremix-click-bounce-duration" value="0.5" min="0" step="0.1">
+                  </div>
+                  <div class="form-group">
+                    <label data-i18n="pngremix_blink_speed_label">眨眼检查间隔 (秒)</label>
+                    <input type="number" id="pngremix-blink-speed" value="1.0" min="0.1" step="0.1">
+                  </div>
+                  <div class="form-group">
+                    <label data-i18n="pngremix_blink_chance_label">眨眼概率分母 (1/N)</label>
+                    <input type="number" id="pngremix-blink-chance" value="10" min="1">
+                  </div>
+                  <div class="form-group">
+                    <label data-i18n="pngremix_blink_hold_ratio_label">闭眼持续比例</label>
+                    <input type="number" id="pngremix-blink-hold-ratio" value="0.2" min="0" max="1" step="0.05">
+                  </div>
+                </div>
+              </details>
+
+              <!-- 表情列表 -->
+              <details class="form-section section-details" open>
+                <summary class="section-header">
+                  <h3><span class="section-collapse-arrow" aria-hidden="true"></span><span data-i18n="section_pngremix_expressions">表情列表 (expressions)</span></h3>
+                  <div class="section-actions">
+                    <button class="btn btn-sm btn-primary" onclick="addPngRemixExpression()">➕ <span data-i18n="btn_add_expression">添加表情</span></button>
+                  </div>
+                </summary>
+                <small class="section-hint" data-i18n="pngremix_expressions_hint">表情对应 .pngRemix 文件中的 State 索引切换</small>
+                <div class="list-filters">
+                  <div class="form-group">
+                    <label data-i18n="filter_by_name">按名称筛选</label>
+                    <input type="text" id="pngremix-expressions-filter-name" data-i18n-placeholder="placeholder_filter_name" placeholder="" oninput="renderPngRemixAssets()">
+                  </div>
+
+                </div>
+                <div class="asset-list" id="pngremix-expressions-list">
+                </div>
+              </details>
+
+              <!-- 动作列表 -->
+              <details class="form-section section-details" open>
+                <summary class="section-header">
+                  <h3><span class="section-collapse-arrow" aria-hidden="true"></span><span data-i18n="section_pngremix_motions">动作列表 (motions)</span></h3>
+                  <div class="section-actions">
+                    <button class="btn btn-sm btn-primary" onclick="addPngRemixMotion()">➕ <span data-i18n="btn_add_motion">添加动作</span></button>
+                  </div>
+                </summary>
+                <small class="section-hint" data-i18n="pngremix_motions_hint">动作对应 .pngRemix 文件中的 Hotkey (F1-F9) 组件显隐切换</small>
+                <div class="list-filters">
+                  <div class="form-group">
+                    <label data-i18n="filter_by_name">按名称筛选</label>
+                    <input type="text" id="pngremix-motions-filter-name" data-i18n-placeholder="placeholder_filter_name" placeholder="" oninput="renderPngRemixAssets()">
+                  </div>
+
+                </div>
+                <div class="asset-list" id="pngremix-motions-list">
+                </div>
+              </details>
+
+              <!-- 状态映射 -->
+              <details class="form-section section-details" open>
+                <summary class="section-header">
+                  <h3><span class="section-collapse-arrow" aria-hidden="true"></span><span data-i18n="section_pngremix_states">状态-动画映射 (states)</span></h3>
+                  <div class="section-actions">
+                    <button class="btn btn-sm btn-primary" onclick="addPngRemixState()">➕ <span data-i18n="btn_add_pngremix_state">添加映射</span></button>
+                  </div>
+                </summary>
+                <small class="section-hint" data-i18n="pngremix_states_hint">将 Mod 的状态名称映射到 PngRemix 表情和动作</small>
+                <div class="list-filters">
+                  <div class="form-group">
+                    <label data-i18n="filter_by_name">按名称筛选</label>
+                    <input type="text" id="pngremix-states-filter-name" data-i18n-placeholder="placeholder_filter_name" placeholder="" oninput="renderPngRemixAssets()">
+                  </div>
+                  <div class="form-group">
+                    <label data-i18n="filter_by_motion">按动作筛选</label>
+                    <input type="text" id="pngremix-states-filter-motion" data-i18n-placeholder="placeholder_filter_motion" placeholder="" oninput="renderPngRemixAssets()">
+                  </div>
+                  <div class="form-group">
+                    <label data-i18n="filter_by_expression">按表情筛选</label>
+                    <input type="text" id="pngremix-states-filter-expression" data-i18n-placeholder="placeholder_filter_expression" placeholder="" oninput="renderPngRemixAssets()">
+                  </div>
+
+                </div>
+                <div class="asset-list" id="pngremix-states-list">
+                </div>
+              </details>
+
+            </div>
+          </div>
+        </div>
+
+        <!-- 气泡样式 Tab -->
+        <div class="tab-content" id="tab-bubble">
+          <div class="panel-header">
+            <h2>💬 <span data-i18n="bubble_title">气泡样式</span></h2>
+            <p class="panel-desc" data-i18n="bubble_desc">配置对话气泡和分支选项的外观（bubble_style.json）</p>
+          </div>
+          <div class="panel-body">
+            <!-- 气泡样式开关 -->
+            <section class="form-section">
+              <div class="form-group">
+                <label for="bubble-enable" data-i18n="bubble_enable_label">启用自定义气泡样式</label>
+                <label class="switch">
+                  <input type="checkbox" id="bubble-enable" onchange="toggleBubbleStyle()">
+                  <span class="slider"></span>
+                </label>
+                <small data-i18n="bubble_enable_hint">关闭后将不会生成 bubble_style.json，使用默认气泡样式</small>
+              </div>
+            </section>
+            
+            <div id="bubble-style-fields" class="bubble-disabled">
+            
+            <!-- 预览区域 -->
+            <section class="form-section bubble-preview-section">
+              <h3 data-i18n="section_bubble_preview">预览</h3>
+              <div class="bubble-preview-container" id="bubble-preview-container">
+                <div class="bubble-preview" id="bubble-preview">
+                  <div class="bubble-decoration-top" id="preview-deco-top"></div>
+                  <div class="bubble-text" data-i18n="preview_text">这是一条示例消息，用于预览气泡效果~</div>
+                  <div class="bubble-decoration-bottom" id="preview-deco-bottom"></div>
+                  <div class="bubble-tail" id="preview-tail"></div>
+                  <div class="bubble-branches" id="preview-branches">
+                    <button class="branch-btn" id="preview-branch-1">
+                      <span class="deco-left" id="preview-btn-deco-left"></span>
+                      <span data-i18n="preview_branch_1">选项 A</span>
+                      <span class="deco-right" id="preview-btn-deco-right"></span>
+                    </button>
+                    <button class="branch-btn" id="preview-branch-2">
+                      <span class="deco-left"></span>
+                      <span data-i18n="preview_branch_2">选项 B</span>
+                      <span class="deco-right"></span>
+                    </button>
+                  </div>
+                </div>
+              </div>
+              <button class="btn btn-sm btn-secondary" onclick="updateBubblePreview()">🔄 <span data-i18n="btn_refresh_preview">刷新预览</span></button>
+            </section>
+
+            <div class="two-column-layout">
+              <div class="left-column">
+                <section class="form-section">
+                  <h3 data-i18n="section_bubble_style">气泡主体样式</h3>
+                  <div class="form-grid">
+                    <div class="form-group full-width">
+                      <label data-i18n="bubble_bg_label">背景 (background)</label>
+                      <input type="text" id="bubble-bg" data-i18n-placeholder="placeholder_bubble_bg" placeholder="">
+                    </div>
+                    <div class="form-group full-width">
+                      <label data-i18n="bubble_border_label">边框 (border)</label>
+                      <input type="text" id="bubble-border" data-i18n-placeholder="placeholder_bubble_border" placeholder="">
+                    </div>
+                    <div class="form-group">
+                      <label data-i18n="border_radius_label">圆角 (border_radius)</label>
+                      <input type="text" id="bubble-radius" data-i18n-placeholder="placeholder_border_radius" placeholder="">
+                    </div>
+                    <div class="form-group">
+                      <label data-i18n="padding_label">内边距 (padding)</label>
+                      <input type="text" id="bubble-padding" data-i18n-placeholder="placeholder_padding" placeholder="">
+                    </div>
+                    <div class="form-group">
+                      <label data-i18n="min_width_label">最小宽度 (min_width)</label>
+                      <input type="text" id="bubble-min-width" data-i18n-placeholder="placeholder_min_width" placeholder="">
+                    </div>
+                    <div class="form-group">
+                      <label data-i18n="max_width_label">最大宽度 (max_width)</label>
+                      <input type="text" id="bubble-max-width" data-i18n-placeholder="placeholder_max_width" placeholder="">
+                    </div>
+                    <div class="form-group">
+                      <label data-i18n="text_color_label">文字颜色 (color)</label>
+                      <input type="text" id="bubble-color" data-i18n-placeholder="placeholder_text_color" placeholder="">
+                    </div>
+                    <div class="form-group">
+                      <label data-i18n="font_size_label">字体大小 (font_size)</label>
+                      <input type="text" id="bubble-font-size" data-i18n-placeholder="placeholder_font_size" placeholder="">
+                    </div>
+                    <div class="form-group">
+                      <label data-i18n="line_height_label">行高 (line_height)</label>
+                      <input type="text" id="bubble-line-height" data-i18n-placeholder="placeholder_line_height" placeholder="">
+                    </div>
+                    <div class="form-group">
+                      <label data-i18n="font_family_label">字体 (font_family)</label>
+                      <input type="text" id="bubble-font-family" data-i18n-placeholder="placeholder_font_family" placeholder="">
+                    </div>
+                    <div class="form-group full-width">
+                      <label data-i18n="box_shadow_label">阴影 (box_shadow)</label>
+                      <input type="text" id="bubble-box-shadow" placeholder="0 2px 4px rgba(0,0,0,0.1)">
+                    </div>
+                    <div class="form-group full-width">
+                      <label data-i18n="backdrop_filter_label">背景滤镜 (backdrop_filter)</label>
+                      <input type="text" id="bubble-backdrop-filter" data-i18n-placeholder="placeholder_backdrop_filter" placeholder="">
+                    </div>
+                    <div class="form-group">
+                      <label data-i18n="decoration_top_label">顶部装饰 (decoration_top.content)</label>
+                      <input type="text" id="bubble-decoration-top" data-i18n-placeholder="placeholder_decoration_top" placeholder="">
+                    </div>
+                    <div class="form-group">
+                      <label data-i18n="decoration_bottom_label">底部装饰 (decoration_bottom.content)</label>
+                      <input type="text" id="bubble-decoration-bottom" data-i18n-placeholder="placeholder_decoration_bottom" placeholder="">
+                    </div>
+                  </div>
+                </section>
+
+                <section class="form-section">
+                  <h3 data-i18n="section_bubble_tail">气泡尾巴 (tail)</h3>
+                  <div class="form-grid">
+                    <div class="form-group">
+                      <label data-i18n="size_label">大小 (size)</label>
+                      <input type="text" id="bubble-tail-size" data-i18n-placeholder="placeholder_tail_size" placeholder="">
+                    </div>
+                    <div class="form-group">
+                      <label data-i18n="color_label">颜色 (color)</label>
+                      <input type="text" id="bubble-tail-color" data-i18n-placeholder="placeholder_color" placeholder="">
+                    </div>
+                    <div class="form-group full-width">
+                      <label data-i18n="shadow_label">阴影 (shadow)</label>
+                      <input type="text" id="bubble-tail-shadow" data-i18n-placeholder="placeholder_shadow" placeholder="">
+                    </div>
+                  </div>
+                </section>
+              </div>
+
+              <div class="right-column">
+                <section class="form-section">
+                  <h3 data-i18n="section_branch_container">分支容器 (branch.container)</h3>
+                  <div class="form-grid">
+                    <div class="form-group">
+                      <label data-i18n="gap_label">间距 (gap)</label>
+                      <input type="text" id="branch-container-gap" placeholder="5px">
+                    </div>
+                    <div class="form-group">
+                      <label data-i18n="margin_top_label">顶部间距 (margin_top)</label>
+                      <input type="text" id="branch-container-margin-top" data-i18n-placeholder="placeholder_margin_top" placeholder="">
+                    </div>
+                    <div class="form-group">
+                      <label data-i18n="padding_top_label">顶部内边距 (padding_top)</label>
+                      <input type="text" id="branch-container-padding-top" placeholder="8px">
+                    </div>
+                    <div class="form-group">
+                      <label data-i18n="border_top_label">顶部边框 (border_top)</label>
+                      <input type="text" id="branch-container-border-top" data-i18n-placeholder="placeholder_border_top" placeholder="">
+                    </div>
+                  </div>
+                </section>
+
+                <section class="form-section">
+                  <h3 data-i18n="section_branch_button">分支按钮 (branch.button)</h3>
+                  <div class="form-grid">
+                    <div class="form-group full-width">
+                      <label data-i18n="btn_bg_label">背景 (background)</label>
+                      <input type="text" id="branch-btn-bg" data-i18n-placeholder="placeholder_btn_bg" placeholder="">
+                    </div>
+                    <div class="form-group">
+                      <label data-i18n="text_color_label">文字颜色 (color)</label>
+                      <input type="text" id="branch-btn-color" data-i18n-placeholder="placeholder_text_color" placeholder="">
+                    </div>
+                    <div class="form-group">
+                      <label data-i18n="btn_border_label">边框 (border)</label>
+                      <input type="text" id="branch-btn-border" data-i18n-placeholder="placeholder_btn_border" placeholder="">
+                    </div>
+                    <div class="form-group">
+                      <label data-i18n="border_radius_label">圆角 (border_radius)</label>
+                      <input type="text" id="branch-btn-border-radius" data-i18n-placeholder="placeholder_border_radius" placeholder="">
+                    </div>
+                    <div class="form-group">
+                      <label data-i18n="padding_label">内边距 (padding)</label>
+                      <input type="text" id="branch-btn-padding" data-i18n-placeholder="placeholder_padding" placeholder="">
+                    </div>
+                    <div class="form-group">
+                      <label data-i18n="min_width_label">最小宽度 (min_width)</label>
+                      <input type="text" id="branch-btn-min-width" data-i18n-placeholder="placeholder_min_width" placeholder="">
+                    </div>
+                    <div class="form-group">
+                      <label data-i18n="font_size_label">字体大小 (font_size)</label>
+                      <input type="text" id="branch-btn-font-size" data-i18n-placeholder="placeholder_font_size" placeholder="">
+                    </div>
+                    <div class="form-group full-width">
+                      <label data-i18n="box_shadow_label">阴影 (box_shadow)</label>
+                      <input type="text" id="branch-btn-box-shadow" data-i18n-placeholder="placeholder_shadow" placeholder="">
+                    </div>
+                    <div class="form-group full-width">
+                      <label data-i18n="backdrop_filter_label">背景滤镜 (backdrop_filter)</label>
+                      <input type="text" id="branch-btn-backdrop-filter" data-i18n-placeholder="placeholder_backdrop_filter" placeholder="">
+                    </div>
+                  </div>
+                </section>
+
+                <section class="form-section">
+                  <h3 data-i18n="section_branch_hover">悬浮状态 (branch.button_hover)</h3>
+                  <div class="form-grid">
+                    <div class="form-group full-width">
+                      <label data-i18n="hover_bg_label">背景 (background)</label>
+                      <input type="text" id="branch-btn-hover-bg" data-i18n-placeholder="placeholder_hover_bg" placeholder="">
+                    </div>
+                    <div class="form-group">
+                      <label data-i18n="hover_color_label">文字颜色 (color)</label>
+                      <input type="text" id="branch-btn-hover-color" data-i18n-placeholder="placeholder_text_color" placeholder="">
+                    </div>
+                    <div class="form-group">
+                      <label data-i18n="hover_border_color_label">边框颜色 (border_color)</label>
+                      <input type="text" id="branch-btn-hover-border-color" data-i18n-placeholder="placeholder_border_color" placeholder="">
+                    </div>
+                    <div class="form-group full-width">
+                      <label data-i18n="hover_box_shadow_label">阴影 (box_shadow)</label>
+                      <input type="text" id="branch-btn-hover-box-shadow" data-i18n-placeholder="placeholder_shadow" placeholder="">
+                    </div>
+                    <div class="form-group">
+                      <label data-i18n="hover_transform_label">变换 (transform)</label>
+                      <input type="text" id="branch-btn-hover-transform" data-i18n-placeholder="placeholder_hover_transform" placeholder="">
+                    </div>
+                  </div>
+                </section>
+
+                <section class="form-section">
+                  <h3 data-i18n="section_branch_active">点击状态 (branch.button_active)</h3>
+                  <div class="form-grid">
+                    <div class="form-group full-width">
+                      <label data-i18n="active_bg_label">背景 (background)</label>
+                      <input type="text" id="branch-btn-active-bg" data-i18n-placeholder="placeholder_active_bg" placeholder="">
+                    </div>
+                    <div class="form-group full-width">
+                      <label data-i18n="active_box_shadow_label">阴影 (box_shadow)</label>
+                      <input type="text" id="branch-btn-active-box-shadow" data-i18n-placeholder="placeholder_shadow" placeholder="">
+                    </div>
+                    <div class="form-group">
+                      <label data-i18n="active_transform_label">变换 (transform)</label>
+                      <input type="text" id="branch-btn-active-transform" data-i18n-placeholder="placeholder_active_transform" placeholder="">
+                    </div>
+                  </div>
+                </section>
+
+                <section class="form-section">
+                  <h3 data-i18n="section_branch_decoration">按钮装饰 (decoration)</h3>
+                  <div class="form-grid">
+                    <div class="form-group">
+                      <label data-i18n="decoration_left_label">左侧装饰 (decoration_left.content)</label>
+                      <input type="text" id="branch-decoration-left" data-i18n-placeholder="placeholder_decoration_left" placeholder="">
+                    </div>
+                    <div class="form-group">
+                      <label data-i18n="decoration_right_label">右侧装饰 (decoration_right.content)</label>
+                      <input type="text" id="branch-decoration-right" data-i18n-placeholder="placeholder_decoration_right" placeholder="">
+                    </div>
+                  </div>
+                </section>
+              </div>
+            </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- AI 工具配置 Tab -->
+        <div class="tab-content" id="tab-aitools">
+          <div class="panel-header">
+            <h2>🤖 <span data-i18n="aitools_title">AI 工具配置</span></h2>
+            <p class="panel-desc" data-i18n="aitools_desc">配置 AI 截图识别工具（ai_tools.json）</p>
+          </div>
+          <div class="panel-body">
+            <!-- AI 工具开关 -->
+            <section class="form-section">
+              <div class="form-group">
+                <label for="aitools-enable" data-i18n="aitools_enable_label">启用 AI 工具配置</label>
+                <label class="switch">
+                  <input type="checkbox" id="aitools-enable" onchange="toggleAiTools()">
+                  <span class="slider"></span>
+                </label>
+                <small data-i18n="aitools_enable_hint">关闭后将不会生成 ai_tools.json</small>
+              </div>
+            </section>
+
+            <div id="aitools-fields" class="bubble-disabled">
+
+            <!-- 窗口列表 -->
+            <section class="form-section">
+              <div class="section-header">
+                <h3 data-i18n="aitools_processes_title">窗口配置</h3>
+                <div class="section-actions">
+                  <button class="btn btn-sm btn-ghost" onclick="pasteAiToolProcess()">📋 <span data-i18n="btn_paste_from_clipboard">粘贴</span></button>
+                  <button class="btn btn-sm btn-primary" onclick="addAiToolProcess()">➕ <span data-i18n="aitools_add_process">添加窗口</span></button>
+                </div>
+              </div>
+              <div class="list-filters" style="margin-bottom:8px;">
+                <div class="form-group">
+                  <label data-i18n="aitools_search_process">搜索进程</label>
+                  <input type="text" id="aitools-process-search" data-i18n-placeholder="aitools_search_process_hint" placeholder="按进程名搜索..." oninput="filterAiToolProcesses()">
+                </div>
+              </div>
+              <div id="aitools-process-list">
+                <!-- 由 JS 动态填充 -->
+              </div>
+            </section>
+
+            </div>
+          </div>
+        </div>
+
+        <!-- 文本管理 Tab -->
+
+        <div class="tab-content" id="tab-texts">
+          <div class="panel-header">
+            <h2>💬 <span data-i18n="texts_title">文本管理</span></h2>
+            <p class="panel-desc" data-i18n="texts_desc">管理多语言文本和角色信息</p>
+          </div>
+          <div class="panel-body">
+            <!-- 语言选择 -->
+            <section class="form-section">
+              <div class="section-header">
+                <h3 data-i18n="section_languages">语言</h3>
+                <div class="section-actions">
+                  <button class="btn btn-sm btn-ghost" onclick="pasteTextLanguage()">📋 <span data-i18n="btn_paste_lang">粘贴语言</span></button>
+                  <button class="btn btn-sm btn-ghost" onclick="copyTextLanguage()">📄 <span data-i18n="btn_copy_lang">复制语言</span></button>
+                  <button class="btn btn-sm btn-primary" onclick="addLanguage()">➕ <span data-i18n="btn_add_lang">添加语言</span></button>
+                </div>
+              </div>
+              <div class="lang-tabs" id="text-lang-tabs">
+                <!-- 由 JS 动态填充 -->
+              </div>
+            </section>
+
+            <!-- 角色信息 -->
+            <section class="form-section">
+              <h3 data-i18n="section_char_info">角色信息 (info.json)</h3>
+              <div class="form-grid" id="text-info-form">
+                <div class="form-group">
+                  <label data-i18n="lang_id_label">语言ID</label>
+                  <input type="text" id="text-lang-id" data-i18n-placeholder="placeholder_lang_id" placeholder="">
+                </div>
+                <div class="form-group">
+                  <label data-i18n="lang_name_label">语言名称</label>
+                  <input type="text" id="text-lang-name" data-i18n-placeholder="placeholder_lang_name" placeholder="">
+                </div>
+                <div class="form-group">
+                  <label data-i18n="char_name_label">角色名称</label>
+                  <input type="text" id="text-char-name" data-i18n-placeholder="placeholder_char_name" placeholder="">
+                </div>
+                <div class="form-group full-width">
+                  <label data-i18n="char_desc_label">角色描述</label>
+                  <textarea id="text-char-desc" rows="3" data-i18n-placeholder="placeholder_char_desc" placeholder=""></textarea>
+                </div>
+
+              </div>
+            </section>
+
+            <!-- 对话文本 -->
+            <section class="form-section">
+              <div class="section-header">
+                <h3 data-i18n="section_speech_texts">对话文本 (speech.json)</h3>
+                <div class="section-actions">
+                  <div class="feature-toggle">
+                    <label for="text-speech-enable" data-i18n="text_speech_enable_label">启用对话文本</label>
+                    <label class="switch">
+                      <input type="checkbox" id="text-speech-enable" onchange="toggleTextSpeech()">
+                      <span class="slider"></span>
+                    </label>
+                  </div>
+                  <button class="btn btn-sm btn-primary" id="text-speech-add-btn" onclick="addSpeechText()">➕ <span data-i18n="btn_add_text">添加文本</span></button>
+                  <button class="btn btn-sm btn-secondary" id="text-speech-import-btn" onclick="openImportSpeechFromMod()">📥 <span data-i18n="btn_import_speech_from_mod">从其他Mod导入</span></button>
+                </div>
+              </div>
+              <small class="section-hint" data-i18n="text_speech_enable_hint">关闭后将不会生成 text/&lt;lang&gt;/speech.json</small>
+              <small class="section-hint" data-i18n="speech_placeholders_hint">可用占位符：{nickname}、{days_used}、{usage_hours}</small>
+
+
+              <div id="text-speech-fields" class="feature-disabled">
+                <div class="list-filters">
+                  <div class="form-group">
+                    <label data-i18n="filter_by_name">按名称筛选</label>
+                    <input type="text" id="speech-filter-name" data-i18n-placeholder="placeholder_filter_name" placeholder="" oninput="renderSpeechTexts()">
+                  </div>
+                  <div class="form-group">
+                    <label data-i18n="filter_by_content">内容包含</label>
+                    <input type="text" id="speech-filter-contains" data-i18n-placeholder="placeholder_filter_contains" placeholder="" oninput="renderSpeechTexts()">
+                  </div>
+
+                </div>
+
+                <div class="speech-list" id="speech-text-list">
+                  <!-- 由 JS 动态填充 -->
+                </div>
+              </div>
+            </section>
+          </div>
+        </div>
+
+        <!-- 音频管理 Tab -->
+        <div class="tab-content" id="tab-audio">
+          <div class="panel-header">
+            <h2>🔊 <span data-i18n="audio_title">音频管理</span></h2>
+            <p class="panel-desc" data-i18n="audio_desc">管理多语言音频资源</p>
+          </div>
+          <div class="panel-body">
+            <section class="form-section">
+              <div class="form-group">
+                <label for="audio-speech-enable" data-i18n="audio_speech_enable_label">启用音频</label>
+                <label class="switch">
+                  <input type="checkbox" id="audio-speech-enable" onchange="toggleAudioSpeech()">
+                  <span class="slider"></span>
+                </label>
+                <small class="section-hint" data-i18n="audio_speech_enable_hint">关闭后将不会生成 audio/&lt;lang&gt;/speech.json</small>
+              </div>
+            </section>
+
+            <div id="audio-speech-fields" class="feature-disabled">
+              <!-- 语言选择 -->
+              <section class="form-section">
+                <div class="section-header">
+                  <h3 data-i18n="section_languages">语言</h3>
+                  <div class="section-actions">
+                    <button class="btn btn-sm btn-ghost" onclick="pasteAudioLanguage()">📋 <span data-i18n="btn_paste_lang">粘贴语言</span></button>
+                    <button class="btn btn-sm btn-ghost" onclick="copyAudioLanguage()">📄 <span data-i18n="btn_copy_lang">复制语言</span></button>
+                    <button class="btn btn-sm btn-primary" onclick="addAudioLanguage()">➕ <span data-i18n="btn_add_lang">添加语言</span></button>
+                  </div>
+                </div>
+                <div class="lang-tabs" id="audio-lang-tabs">
+                  <!-- 由 JS 动态填充 -->
+                </div>
+              </section>
+
+              <!-- 音频列表 -->
+              <section class="form-section">
+                <div class="section-header">
+                  <h3 data-i18n="section_audio_files">音频文件 (speech.json)</h3>
+                  <div class="section-actions">
+                    <button class="btn btn-sm btn-secondary" id="audio-speech-import-btn" onclick="importAudioEntries()">⬇️ <span data-i18n="btn_import_audio">一键导入</span></button>
+                    <button class="btn btn-sm btn-secondary" id="audio-speech-import-file-btn" onclick="importSingleAudioEntry()">📥 <span data-i18n="btn_import_file">导入</span></button>
+                    <button class="btn btn-sm btn-secondary" id="audio-speech-import-mod-btn" onclick="openImportAudioFromMod()">📥 <span data-i18n="btn_import_audio_from_mod">从其他Mod导入</span></button>
+                    <button class="btn btn-sm btn-primary" id="audio-speech-add-btn" onclick="addAudioEntry()">➕ <span data-i18n="btn_add_audio">添加音频</span></button>
+                  </div>
+                </div>
+
+                <div class="list-filters">
+                  <div class="form-group">
+                    <label data-i18n="filter_by_name">按名称筛选</label>
+                    <input type="text" id="audio-filter-name" data-i18n-placeholder="placeholder_filter_name" placeholder="" oninput="renderAudioList()">
+                  </div>
+                  <div class="form-group">
+                    <label data-i18n="filter_by_path">路径包含</label>
+                    <input type="text" id="audio-filter-path" data-i18n-placeholder="placeholder_filter_path" placeholder="" oninput="renderAudioList()">
+                  </div>
+                </div>
+
+
+                <div class="audio-list" id="audio-list">
+                  <!-- 由 JS 动态填充 -->
+                </div>
+              </section>
+            </div>
+          </div>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <div class="global-scroll-actions" id="global-scroll-actions">
+    <button class="btn btn-secondary scroll-action-btn" onclick="scrollContentToTop()" type="button">
+      ⬆ <span data-i18n="scroll_to_top">回到顶部</span>
+    </button>
+    <button class="btn btn-secondary scroll-action-btn" onclick="scrollContentToBottom()" type="button">
+      ⬇ <span data-i18n="scroll_to_bottom">回到底部</span>
+    </button>
+  </div>
+
+  <!-- 状态编辑弹窗 -->
+  <div class="modal" id="state-modal">
+    <div class="modal-overlay" onclick="closeStateModal()"></div>
+    <div class="modal-content modal-large">
+      <div class="modal-header">
+        <h3 id="state-modal-title" data-i18n="modal_edit_state">编辑状态</h3>
+        <button class="modal-close" onclick="closeStateModal()">×</button>
+      </div>
+      <div class="modal-body">
+        <div class="form-grid">
+          <div class="form-group">
+            <label><span data-i18n="state_name_label">状态名称</span> <span class="required">*</span></label>
+            <input type="text" id="state-name" data-i18n-placeholder="placeholder_state_name" placeholder="">
+          </div>
+
+          <div class="form-group">
+            <label data-i18n="persistent_label">是否持久</label>
+            <label class="switch">
+              <input type="checkbox" id="state-persistent">
+              <span class="slider"></span>
+            </label>
+          </div>
+          <div class="form-group">
+            <label data-i18n="anima_label">关联动画</label>
+            <select id="state-anima">
+              <option value="" data-i18n="select_anima_placeholder">-- 选择动画 --</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label data-i18n="audio_label">关联音频</label>
+            <select id="state-audio">
+              <option value="" data-i18n="select_audio_placeholder">-- 选择音频 --</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label data-i18n="text_label">关联文本</label>
+            <select id="state-text">
+              <option value="" data-i18n="select_text_placeholder">-- 选择文本 --</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label data-i18n="priority_label">优先级</label>
+            <input type="number" id="state-priority" value="2" min="0">
+          </div>
+          <div class="form-group">
+            <label data-i18n="next_state_label">下一状态</label>
+            <select id="state-next-state">
+              <option value="" data-i18n="select_state_placeholder">-- 选择状态 --</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label data-i18n="show_bubble_label">显示气泡</label>
+            <label class="switch">
+              <input type="checkbox" id="state-branch-show-bubble" checked>
+              <span class="slider"></span>
+            </label>
+          </div>
+
+          <div class="form-group full-width">
+            <details class="advanced-options" id="state-limits-options">
+              <summary><span data-i18n="state_limits">状态限制</span></summary>
+              <div class="advanced-options-content">
+                <div class="form-grid">
+                  <div class="form-group">
+                    <label data-i18n="date_start_label">开始日期 (MM-DD)</label>
+                    <div class="date-picker-group">
+
+                      <select id="state-date-start-month" class="date-month-select">
+                        <option value="">--</option>
+                        <option value="01">01</option>
+                        <option value="02">02</option>
+                        <option value="03">03</option>
+                        <option value="04">04</option>
+                        <option value="05">05</option>
+                        <option value="06">06</option>
+                        <option value="07">07</option>
+                        <option value="08">08</option>
+                        <option value="09">09</option>
+                        <option value="10">10</option>
+                        <option value="11">11</option>
+                        <option value="12">12</option>
+                      </select>
+                      <span class="date-separator">-</span>
+                      <select id="state-date-start-day" class="date-day-select">
+                        <option value="">--</option>
+                      </select>
+                    </div>
+                  </div>
+                  <div class="form-group">
+                    <label data-i18n="date_end_label">结束日期 (MM-DD)</label>
+                    <div class="date-picker-group">
+
+                      <select id="state-date-end-month" class="date-month-select">
+                        <option value="">--</option>
+                        <option value="01">01</option>
+                        <option value="02">02</option>
+                        <option value="03">03</option>
+                        <option value="04">04</option>
+                        <option value="05">05</option>
+                        <option value="06">06</option>
+                        <option value="07">07</option>
+                        <option value="08">08</option>
+                        <option value="09">09</option>
+                        <option value="10">10</option>
+                        <option value="11">11</option>
+                        <option value="12">12</option>
+                      </select>
+                      <span class="date-separator">-</span>
+                      <select id="state-date-end-day" class="date-day-select">
+                        <option value="">--</option>
+                      </select>
+                    </div>
+                  </div>
+                  <div class="form-group">
+                    <label data-i18n="time_start_label">开始时间 (HH:MM)</label>
+                    <input type="time" id="state-time-start">
+                  </div>
+                  <div class="form-group">
+                    <label data-i18n="time_end_label">结束时间 (HH:MM)</label>
+                    <input type="time" id="state-time-end">
+                  </div>
+
+                  <div class="form-group">
+                    <label data-i18n="trigger_counter_start_label">触发计数起点</label>
+                    <input type="number" id="state-trigger-counter-start" value="-2147483648" step="1">
+                  </div>
+                  <div class="form-group">
+                    <label data-i18n="trigger_counter_end_label">触发计数终点</label>
+                    <input type="number" id="state-trigger-counter-end" value="2147483647" step="1">
+                  </div>
+
+                  <div class="form-group">
+                    <label data-i18n="trigger_temp_start_label">气温触发起点</label>
+                    <input type="number" id="state-trigger-temp-start" value="-2147483648" step="1">
+                  </div>
+                  <div class="form-group">
+                    <label data-i18n="trigger_temp_end_label">气温触发终点</label>
+                    <input type="number" id="state-trigger-temp-end" value="2147483647" step="1">
+                  </div>
+
+
+
+                  <div class="form-group">
+                    <label data-i18n="trigger_uptime_label">启动时长触发</label>
+                    <input type="number" id="state-trigger-uptime" value="0" min="0" step="1">
+                  </div>
+
+                  <div class="form-group">
+                    <label data-i18n="trigger_weather_label">触发天气</label>
+                    <select id="state-trigger-weather" multiple size="8">
+
+                      <option value="" disabled data-i18n="trigger_weather_no_limit">(不限制：不选择任何项)</option>
+
+
+                      <option value="113">113 - Clear/Sunny</option>
+                      <option value="116">116 - Partly Cloudy</option>
+                      <option value="119">119 - Cloudy</option>
+                      <option value="122">122 - Overcast</option>
+                      <option value="143">143 - Mist</option>
+                      <option value="176">176 - Patchy rain nearby</option>
+                      <option value="179">179 - Patchy snow nearby</option>
+                      <option value="182">182 - Patchy sleet nearby</option>
+                      <option value="185">185 - Patchy freezing drizzle nearby</option>
+                      <option value="200">200 - Thundery outbreaks in nearby</option>
+                      <option value="227">227 - Blowing snow</option>
+                      <option value="230">230 - Blizzard</option>
+                      <option value="248">248 - Fog</option>
+                      <option value="260">260 - Freezing fog</option>
+                      <option value="263">263 - Patchy light drizzle</option>
+                      <option value="266">266 - Light drizzle</option>
+                      <option value="281">281 - Freezing drizzle</option>
+                      <option value="284">284 - Heavy freezing drizzle</option>
+                      <option value="293">293 - Patchy light rain</option>
+                      <option value="296">296 - Light rain</option>
+                      <option value="299">299 - Moderate rain at times</option>
+                      <option value="302">302 - Moderate rain</option>
+                      <option value="305">305 - Heavy rain at times</option>
+                      <option value="308">308 - Heavy rain</option>
+                      <option value="311">311 - Light freezing rain</option>
+                      <option value="314">314 - Moderate or Heavy freezing rain</option>
+                      <option value="317">317 - Light sleet</option>
+                      <option value="320">320 - Moderate or heavy sleet</option>
+                      <option value="323">323 - Patchy light snow</option>
+                      <option value="326">326 - Light snow</option>
+                      <option value="329">329 - Patchy moderate snow</option>
+                      <option value="332">332 - Moderate snow</option>
+                      <option value="335">335 - Patchy heavy snow</option>
+                      <option value="338">338 - Heavy snow</option>
+                      <option value="350">350 - Ice pellets</option>
+                      <option value="353">353 - Light rain shower</option>
+                      <option value="356">356 - Moderate or heavy rain shower</option>
+                      <option value="359">359 - Torrential rain shower</option>
+                      <option value="362">362 - Light sleet showers</option>
+                      <option value="365">365 - Moderate or heavy sleet showers</option>
+                      <option value="368">368 - Light snow showers</option>
+                      <option value="371">371 - Moderate or heavy snow showers</option>
+                      <option value="374">374 - Light showers of ice pellets</option>
+                      <option value="377">377 - Moderate or heavy showers of ice pellets</option>
+                      <option value="386">386 - Patchy light rain in area with thunder</option>
+                      <option value="389">389 - Moderate or heavy rain in area with thunder</option>
+                      <option value="392">392 - Patchy light snow in area with thunder</option>
+                      <option value="395">395 - Moderate or heavy snow in area with thunder</option>
+                    </select>
+                  </div>
+
+
+                </div>
+                <small class="section-hint" data-i18n="trigger_counter_hint">仅当当前 ModData.value 落在 [起点, 终点] 区间内时，该状态才允许触发</small>
+                <small class="section-hint" data-i18n="trigger_temp_hint">仅当当前 environment.temperature (°C) 落在 [起点, 终点] 区间内时，该状态才允许触发</small>
+                <small class="section-hint" data-i18n="trigger_uptime_hint">仅当当前距离程序启动已过分钟数 >= trigger_uptime 时，该状态才允许触发</small>
+                <small class="section-hint" data-i18n="trigger_weather_hint">仅当当前 environment.condition（或 condition_code）与 trigger_weather 精确匹配时，该状态才允许触发</small>
+
+
+
+              </div>
+            </details>
+          </div>
+        </div>
+
+        <details class="advanced-options" id="state-can-trigger-options">
+          <summary><span data-i18n="section_can_trigger_states">可触发子状态</span></summary>
+          <div class="advanced-options-content">
+            <div class="form-grid">
+              <div class="form-group">
+                <label data-i18n="trigger_time_label">触发间隔 (秒)</label>
+                <input type="number" id="state-trigger-time" value="0" min="0">
+              </div>
+              <div class="form-group">
+                <label data-i18n="trigger_rate_label">触发概率 (%)</label>
+                <input type="number" id="state-trigger-rate" value="0" min="0" max="100" step="0.1">
+              </div>
+            </div>
+
+            <div class="section-header" style="margin-top: 12px;">
+              <h4 data-i18n="section_can_trigger_states">可触发子状态</h4>
+              <button class="btn btn-sm btn-secondary" onclick="addCanTriggerState()">➕ <span data-i18n="btn_add_trigger_state">添加状态</span></button>
+            </div>
+            <small class="section-hint" data-i18n="can_trigger_states_hint">配置该状态可随机触发的子状态及权重</small>
+            <div class="can-trigger-list" id="can-trigger-list">
+              <!-- 由 JS 动态填充 -->
+            </div>
+          </div>
+        </details>
+
+        <details class="advanced-options" id="state-data-counter-options" style="margin-top: 12px;">
+          <summary><span data-i18n="section_data_counters">数据计数器 (Mod Data Counter)</span></summary>
+          <div class="advanced-options-content">
+            <div class="form-grid">
+              <div class="form-group">
+                <label data-i18n="counter_op_label">操作类型</label>
+                <select id="state-counter-op">
+                  <option value="" data-i18n="counter_op_none">-- 无操作 --</option>
+                  <option value="set">= (set)</option>
+                  <option value="add">+ (add)</option>
+                  <option value="sub">- (sub)</option>
+                  <option value="mul">* (mul)</option>
+                  <option value="div">/ (div)</option>
+                </select>
+              </div>
+              <div class="form-group">
+                <label data-i18n="counter_value_label">操作值</label>
+                <input type="number" id="state-counter-value" value="0" step="1">
+              </div>
+            </div>
+            <small class="section-hint" data-i18n="data_counter_hint">进入该状态时对 Mod 数据执行的操作（如好感度 +1）</small>
+          </div>
+        </details>
+
+        <details class="advanced-options" id="state-live2d-params-options" style="margin-top: 12px; display: none;">
+          <summary><span data-i18n="section_live2d_params">Live2D 参数覆写 (Live2D Parameters)</span></summary>
+          <div class="advanced-options-content">
+            <div class="section-header" style="margin-top: 0;">
+              <h4 data-i18n="section_live2d_params">Live2D 参数覆写</h4>
+              <button class="btn btn-sm btn-secondary" onclick="addLive2DParam()">➕ <span data-i18n="btn_add_live2d_param">添加参数</span></button>
+            </div>
+            <small class="section-hint" data-i18n="live2d_params_hint">进入该状态时设置 Live2D 模型参数（如 ParamAngleX, ParamEyeLOpen 等）</small>
+            <div class="live2d-param-list" id="live2d-param-list">
+              <!-- 由 JS 动态填充 -->
+            </div>
+          </div>
+        </details>
+
+        <details class="advanced-options" id="state-pngremix-params-options" style="margin-top: 12px; display: none;">
+          <summary><span data-i18n="section_pngremix_params">PngRemix 参数覆写 (PngRemix Parameters)</span></summary>
+          <div class="advanced-options-content">
+            <div class="section-header" style="margin-top: 0;">
+              <h4 data-i18n="section_pngremix_params">PngRemix 参数覆写</h4>
+              <button class="btn btn-sm btn-secondary" onclick="addPngRemixParam()">➕ <span data-i18n="btn_add_pngremix_param">添加参数</span></button>
+            </div>
+            <small class="section-hint" data-i18n="pngremix_params_hint">进入该状态时切换 PngRemix 表情或触发动作</small>
+            <div class="pngremix-param-list" id="pngremix-param-list">
+              <!-- 由 JS 动态填充 -->
+            </div>
+          </div>
+        </details>
+
+        <details class="advanced-options" id="state-branch-options" style="margin-top: 12px;">
+          <summary><span data-i18n="section_branches">对话分支</span></summary>
+          <div class="advanced-options-content">
+            <div class="section-header" style="margin-top: 0;">
+              <h4 data-i18n="section_branches">对话分支</h4>
+              <button class="btn btn-sm btn-secondary" onclick="addBranch()">➕ <span data-i18n="btn_add_branch">添加分支</span></button>
+            </div>
+
+            <div class="branch-list" id="branch-list">
+              <!-- 由 JS 动态填充 -->
+            </div>
+          </div>
+        </details>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" onclick="closeStateModal()" data-i18n="btn_cancel">取消</button>
+        <button class="btn btn-primary" onclick="saveState()" data-i18n="btn_save">保存</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 资源编辑弹窗 -->
+  <div class="modal" id="asset-modal">
+    <div class="modal-overlay" onclick="closeAssetModal()"></div>
+    <div class="modal-content">
+      <div class="modal-header">
+        <h3 id="asset-modal-title" data-i18n="modal_edit_asset">编辑动画资源</h3>
+        <button class="modal-close" onclick="closeAssetModal()">×</button>
+      </div>
+      <div class="modal-body" id="asset-modal-body">
+        <div class="form-grid">
+          <div class="form-group">
+            <label><span data-i18n="name_label">名称</span> <span class="required">*</span></label>
+            <input type="text" id="asset-name" data-i18n-placeholder="placeholder_asset_name" placeholder="">
+          </div>
+          <div class="form-group">
+            <label data-i18n="img_path_label">图片路径</label>
+            <input type="text" id="asset-img" data-i18n-placeholder="placeholder_asset_img" placeholder="">
+          </div>
+          <div class="form-group">
+            <label data-i18n="is_sequence_label">是否序列帧</label>
+            <label class="switch">
+              <input type="checkbox" id="asset-sequence" checked>
+              <span class="slider"></span>
+            </label>
+          </div>
+          <div class="form-group">
+            <label data-i18n="origin_reverse_label">原始反向</label>
+            <label class="switch">
+              <input type="checkbox" id="asset-origin-reverse">
+              <span class="slider"></span>
+            </label>
+          </div>
+          <div class="form-group">
+            <label data-i18n="frame_num_x_label">横向帧数</label>
+            <input type="number" id="asset-frame-num-x" value="1" min="1">
+          </div>
+          <div class="form-group">
+            <label data-i18n="frame_num_y_label">纵向帧数</label>
+            <input type="number" id="asset-frame-num-y" value="1" min="1">
+          </div>
+          <div class="form-group">
+            <label data-i18n="frame_size_x_label">帧宽度 (px)</label>
+            <input type="number" id="asset-frame-size-x" value="260" min="1">
+          </div>
+          <div class="form-group">
+            <label data-i18n="frame_size_y_label">帧高度 (px)</label>
+            <input type="number" id="asset-frame-size-y" value="298" min="1">
+          </div>
+
+          <div class="form-group full-width">
+            <details class="advanced-options" id="asset-advanced-options">
+              <summary><span data-i18n="advanced_options">高级选项</span></summary>
+              <div class="advanced-options-content">
+                <div class="form-grid">
+                  <div class="form-group">
+                    <label data-i18n="need_reverse_label">需要反向播放</label>
+                    <label class="switch">
+                      <input type="checkbox" id="asset-need-reverse">
+                      <span class="slider"></span>
+                    </label>
+                  </div>
+                  <div class="form-group">
+                    <label data-i18n="frame_time_label">帧间隔 (秒)</label>
+                    <input type="number" id="asset-frame-time" value="0.1" min="0.01" step="0.01">
+                  </div>
+                  <div class="form-group">
+                    <label data-i18n="offset_x_label">X偏移 (px)</label>
+                    <input type="number" id="asset-offset-x" value="0">
+                  </div>
+                  <div class="form-group">
+                    <label data-i18n="offset_y_label">Y偏移 (px)</label>
+                    <input type="number" id="asset-offset-y" value="0">
+                  </div>
+                </div>
+              </div>
+            </details>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" onclick="closeAssetModal()" data-i18n="btn_cancel">取消</button>
+        <button class="btn btn-primary" onclick="saveAsset()" data-i18n="btn_save">保存</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 新建 Mod 弹窗 -->
+  <div class="modal" id="new-mod-modal">
+    <div class="modal-overlay" onclick="closeNewModModal()"></div>
+    <div class="modal-content">
+      <div class="modal-header">
+        <h3 data-i18n="modal_create_mod">创建新 Mod</h3>
+        <button class="modal-close" onclick="closeNewModModal()">×</button>
+      </div>
+      <div class="modal-body">
+        <div class="form-group">
+          <label><span data-i18n="mod_id_label">Mod ID</span> <span class="required">*</span></label>
+          <input type="text" id="new-mod-id" data-i18n-placeholder="placeholder_new_mod_id" placeholder="">
+          <small data-i18n="mod_id_hint">唯一标识符，只允许英文、数字和下划线</small>
+        </div>
+        <div class="form-group">
+          <label data-i18n="new_mod_name_label">Mod 名称</label>
+          <input type="text" id="new-mod-name" data-i18n-placeholder="placeholder_new_mod_name" placeholder="">
+        </div>
+        <div class="form-group">
+          <label data-i18n="mod_author_label">作者</label>
+          <input type="text" id="new-mod-author" data-i18n-placeholder="placeholder_mod_author" placeholder="">
+        </div>
+        <div class="form-group">
+          <label data-i18n="mod_type_label">Mod 类型</label>
+          <div class="mod-type-selector">
+            <label class="mod-type-option">
+              <input type="radio" name="new-mod-type" value="sequence" checked>
+              <span class="mod-type-card">
+                <span class="mod-type-icon">🖼️</span>
+                <span class="mod-type-name" data-i18n="mod_type_sequence">序列帧动画</span>
+              </span>
+            </label>
+            <label class="mod-type-option">
+              <input type="radio" name="new-mod-type" value="live2d">
+              <span class="mod-type-card">
+                <span class="mod-type-icon">🎭</span>
+                <span class="mod-type-name" data-i18n="mod_type_live2d">Live2D 模型</span>
+              </span>
+            </label>
+            <label class="mod-type-option">
+              <input type="radio" name="new-mod-type" value="pngremix">
+              <span class="mod-type-card">
+                <span class="mod-type-icon">🧩</span>
+                <span class="mod-type-name" data-i18n="mod_type_pngremix">PngRemix</span>
+              </span>
+            </label>
+            <label class="mod-type-option">
+              <input type="radio" name="new-mod-type" value="threed">
+              <span class="mod-type-card">
+                <span class="mod-type-icon">🧊</span>
+                <span class="mod-type-name" data-i18n="mod_type_threed">3D 模型</span>
+              </span>
+            </label>
+          </div>
+          <small data-i18n="mod_type_hint">创建后类型不可更改</small>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" onclick="closeNewModModal()" data-i18n="btn_cancel">取消</button>
+        <button class="btn btn-primary" onclick="confirmCreateMod()" data-i18n="btn_create">创建</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 触发器编辑弹窗 -->
+  <div class="modal" id="trigger-modal">
+    <div class="modal-overlay" onclick="closeTriggerModal()"></div>
+    <div class="modal-content modal-large">
+      <div class="modal-header">
+        <h3 id="trigger-modal-title" data-i18n="modal_edit_trigger">编辑触发器</h3>
+        <button class="modal-close" onclick="closeTriggerModal()">×</button>
+      </div>
+      <div class="modal-body">
+        <div class="form-grid">
+          <div class="form-group full-width">
+            <label><span data-i18n="event_name_label">事件名称</span> <span class="required">*</span></label>
+            <input type="text" id="trigger-event" data-i18n-placeholder="placeholder_trigger_event" placeholder="">
+            <small data-i18n="event_name_hint">常用事件: click, right_click, global_click, global_right_click, login, work, birthday, firstday, music_start, music_end, login_silence, keydown:Space</small>
+
+          </div>
+        </div>
+        
+        <!-- 触发状态组 -->
+        <div class="trigger-groups-section">
+          <div class="section-header">
+            <h4 data-i18n="section_trigger_groups">触发状态组</h4>
+            <button class="btn btn-sm btn-secondary" onclick="addTriggerGroup()">➕ <span data-i18n="btn_add_group">添加状态组</span></button>
+          </div>
+          <small class="section-hint" data-i18n="trigger_groups_hint">每个状态组对应一个持久状态，当角色处于该持久状态时可触发组内的状态</small>
+          <div class="trigger-groups-list" id="trigger-groups-list">
+            <!-- 由 JS 动态填充 -->
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" onclick="closeTriggerModal()" data-i18n="btn_cancel">取消</button>
+        <button class="btn btn-primary" onclick="saveTrigger()" data-i18n="btn_save">保存</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 截取区域可视化编辑弹窗 -->
+  <div class="modal" id="capture-rect-modal">
+    <div class="modal-overlay" onclick="closeCaptureRectModal()"></div>
+    <div class="modal-content" style="max-width:900px;width:95%;">
+      <div class="modal-header">
+        <h3>📐 <span data-i18n="capture_rect_editor_title">截取区域编辑</span></h3>
+        <button class="modal-close" onclick="closeCaptureRectModal()">&times;</button>
+      </div>
+      <div class="modal-body" style="padding:16px;">
+        <!-- 导入图片 -->
+        <div style="display:flex;align-items:center;gap:12px;margin-bottom:12px;">
+          <button class="btn btn-secondary btn-sm" onclick="document.getElementById('capture-rect-img-input').click()">
+            🖼️ <span data-i18n="capture_rect_import_image">导入图片</span>
+          </button>
+          <input type="file" id="capture-rect-img-input" accept="image/*" style="display:none;" onchange="onCaptureRectImageLoaded(event)">
+          <span id="capture-rect-img-info" style="color:var(--text-muted);font-size:13px;"></span>
+        </div>
+        <!-- Canvas 编辑区 -->
+        <div id="capture-rect-canvas-wrap" style="position:relative;border:1px solid var(--border-color);border-radius:var(--border-radius);overflow:hidden;background:#111;min-height:300px;display:flex;align-items:center;justify-content:center;cursor:crosshair;">
+          <canvas id="capture-rect-canvas"></canvas>
+          <div id="capture-rect-placeholder" style="color:var(--text-muted);position:absolute;pointer-events:none;font-size:14px;" data-i18n="capture_rect_placeholder">请先导入一张图片</div>
+        </div>
+        <!-- 实时数值显示 -->
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:8px;margin-top:12px;">
+          <div class="form-group" style="margin:0;">
+            <label style="font-size:12px;margin-bottom:2px;">X</label>
+            <input type="number" id="capture-rect-val-x" value="0" onchange="onCaptureRectValChanged()">
+          </div>
+          <div class="form-group" style="margin:0;">
+            <label style="font-size:12px;margin-bottom:2px;">Y</label>
+            <input type="number" id="capture-rect-val-y" value="0" onchange="onCaptureRectValChanged()">
+          </div>
+          <div class="form-group" style="margin:0;">
+            <label style="font-size:12px;margin-bottom:2px;">Width</label>
+            <input type="number" id="capture-rect-val-w" value="0" onchange="onCaptureRectValChanged()">
+          </div>
+          <div class="form-group" style="margin:0;">
+            <label style="font-size:12px;margin-bottom:2px;">Height</label>
+            <input type="number" id="capture-rect-val-h" value="0" onchange="onCaptureRectValChanged()">
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" onclick="closeCaptureRectModal()" data-i18n="btn_cancel">取消</button>
+        <button class="btn btn-primary" onclick="confirmCaptureRect()" data-i18n="btn_confirm">确认</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 从其他 Mod 导入触发器弹窗 -->
+  <div class="modal" id="import-trigger-modal">
+    <div class="modal-overlay" onclick="closeImportTriggerModal()"></div>
+    <div class="modal-content modal-large" style="max-width:900px;">
+      <div class="modal-header">
+        <h3>📥 <span data-i18n="modal_import_trigger_title">从其他 Mod 导入触发器</span></h3>
+        <button class="modal-close" onclick="closeImportTriggerModal()">&times;</button>
+      </div>
+      <div class="modal-body" style="padding:16px;overflow-y:auto;">
+        <!-- 触发器列表 -->
+        <div class="import-speech-list" id="import-trigger-list">
+          <p class="import-speech-placeholder" data-i18n="import_trigger_placeholder">请先选择一个 Mod 目录</p>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" onclick="closeImportTriggerModal()" data-i18n="btn_close">关闭</button>
+        <button class="btn btn-primary" onclick="importSelectedTriggers()" data-i18n="btn_import_selected">导入选中项</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 从其他 Mod 导入普通状态弹窗 -->
+  <div class="modal" id="import-state-modal">
+    <div class="modal-overlay" onclick="closeImportStateModal()"></div>
+    <div class="modal-content modal-large" style="max-width:900px;">
+      <div class="modal-header">
+        <h3>📥 <span data-i18n="modal_import_state_title">从其他 Mod 导入普通状态</span></h3>
+        <button class="modal-close" onclick="closeImportStateModal()">&times;</button>
+      </div>
+      <div class="modal-body" style="padding:16px;overflow-y:auto;">
+        <!-- 状态列表 -->
+        <div class="import-speech-list" id="import-state-list">
+          <p class="import-speech-placeholder" data-i18n="import_state_placeholder">请先选择一个 Mod 目录</p>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" onclick="closeImportStateModal()" data-i18n="btn_close">关闭</button>
+        <button class="btn btn-primary" onclick="importSelectedStates()" data-i18n="btn_import_selected">导入选中项</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 从其他 Mod 导入音频弹窗 -->
+  <div class="modal" id="import-audio-modal">
+    <div class="modal-overlay" onclick="closeImportAudioModal()"></div>
+    <div class="modal-content modal-large" style="max-width:900px;">
+      <div class="modal-header">
+        <h3>📥 <span data-i18n="modal_import_audio_title">从其他 Mod 导入音频</span></h3>
+        <button class="modal-close" onclick="closeImportAudioModal()">&times;</button>
+      </div>
+      <div class="modal-body" style="padding:16px;overflow-y:auto;">
+        <!-- 语言标签页 -->
+        <div class="import-speech-lang-tabs" id="import-audio-lang-tabs"></div>
+        <!-- 音频列表 -->
+        <div class="import-speech-list" id="import-audio-list">
+          <p class="import-speech-placeholder" data-i18n="import_audio_placeholder">请先选择一个 Mod 目录</p>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" onclick="closeImportAudioModal()" data-i18n="btn_close">关闭</button>
+        <button class="btn btn-primary" onclick="importSelectedAudioEntries()" data-i18n="btn_import_selected">导入选中项</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 从其他 Mod 导入对话文本弹窗 -->
+  <div class="modal" id="import-speech-modal">
+    <div class="modal-overlay" onclick="closeImportSpeechModal()"></div>
+    <div class="modal-content modal-large" style="max-width:900px;">
+      <div class="modal-header">
+        <h3>📥 <span data-i18n="modal_import_speech_title">从其他 Mod 导入对话文本</span></h3>
+        <button class="modal-close" onclick="closeImportSpeechModal()">&times;</button>
+      </div>
+      <div class="modal-body" style="padding:16px;overflow-y:auto;">
+        <!-- 语言标签页 -->
+        <div class="import-speech-lang-tabs" id="import-speech-lang-tabs"></div>
+        <!-- 文本列表 -->
+        <div class="import-speech-list" id="import-speech-list">
+          <p class="import-speech-placeholder" data-i18n="import_speech_placeholder">请先选择一个 Mod 目录</p>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" onclick="closeImportSpeechModal()" data-i18n="btn_close">关闭</button>
+        <button class="btn btn-primary" onclick="importSelectedSpeechTexts()" data-i18n="btn_import_selected">导入选中项</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Toast 通知 -->
+  <div class="toast-container" id="toast-container"></div>
+
+  <script src="../static/pngremix-decoder.js"></script>
+  <script src="app.js"></script>
+
+
+</body>
+</html>

@@ -1,0 +1,510 @@
+//! 事件管理模块
+//!
+//! 提供统一的事件发送接口，规范化事件处理流程。
+//!
+//! # 功能特性
+//!
+//! - 统一的事件发送接口，避免代码重复
+//! - 自动的错误处理和日志记录
+//! - 支持可选的错误处理策略
+//! - 事件发送失败时的容错机制
+//!
+//! # 使用示例
+//!
+//! ```text
+//! use crate::modules::event_manager::{emit, EmitOptions};
+
+//!
+//! // 基本使用（失败时静默忽略）
+//! emit(&app_handle, "event-name", payload)?;
+//!
+//! // 失败时记录错误日志
+//! emit(&app_handle, "event-name", payload, EmitOptions::log_on_error())?;
+//!
+//! // 失败时记录错误日志并返回错误
+//! emit(&app_handle, "event-name", payload, EmitOptions::fail_on_error())?;
+//! ```
+
+use tauri::{AppHandle, WebviewWindow};
+use tauri::Emitter;
+use std::fmt;
+
+// ========================================================================= //
+// 公共常量
+// ========================================================================= //
+
+/// 调试事件类型：系统
+pub const DEBUG_EVENT_TYPE_SYSTEM: &str = "system";
+
+/// 调试事件类型：媒体
+pub const DEBUG_EVENT_TYPE_MEDIA: &str = "media";
+
+/// 调试事件类型：进程
+pub const DEBUG_EVENT_TYPE_PROCESS: &str = "process";
+
+/// 调试事件类型：AI 工具
+pub const DEBUG_EVENT_TYPE_AI_TOOL: &str = "ai-tool";
+
+
+/// 事件名称常量定义
+///
+/// 集中管理所有事件名称，避免字符串散布在代码中。
+pub mod events {
+    /// 设置变更事件
+    pub const SETTINGS_CHANGE: &str = "settings-change";
+
+    /// 静音模式变更事件
+    pub const MUTE_CHANGE: &str = "mute-change";
+
+    /// 音量变更事件
+    pub const VOLUME_CHANGE: &str = "volume-change";
+
+    /// 角色状态变更事件
+    pub const STATE_CHANGE: &str = "state-change";
+
+    /// 模块刷新事件
+    pub const REFRESH_MODS: &str = "refresh-mods";
+
+    /// 窗口位置变更事件
+    pub const WINDOW_POSITION_CHANGED: &str = "window-position-changed";
+
+    /// 布局调试器状态事件
+    pub const LAYOUT_DEBUGGER_STATUS: &str = "layout-debugger-status";
+
+    /// 系统调试信息更新事件
+    pub const SYSTEM_DEBUG_UPDATE: &str = "system-debug-update";
+
+    /// 媒体调试信息更新事件
+    pub const MEDIA_DEBUG_UPDATE: &str = "media-debug-update";
+
+    /// 进程调试信息更新事件
+    pub const PROCESS_DEBUG_UPDATE: &str = "process-debug-update";
+
+    /// AI 工具调试信息更新事件
+    pub const AI_TOOL_DEBUG_UPDATE: &str = "ai-tool-debug-update";
+
+    /// 环境信息更新事件
+    pub const ENVIRONMENT_UPDATED: &str = "environment-updated";
+
+
+    /// Mod 数据更新事件
+    pub const MOD_DATA_CHANGED: &str = "mod-data-changed";
+
+    /// AI 工具激活事件（焦点窗口匹配到 ai_tools 窗口名时发出）
+    pub const AI_TOOL_ACTIVATED: &str = "ai-tool-activated";
+
+    /// AI 工具数据变更事件（tool_data 列表及启用状态推送到前端）
+    pub const AI_TOOL_DATA_CHANGED: &str = "ai-tool-data-changed";
+
+    /// AI 工具信息窗口消息事件（后端推送截图识别结果到信息窗口）
+    pub const AI_TOOL_INFO_MESSAGE: &str = "ai-tool-info-message";
+
+    /// DSH 集成：状态变化事件（payload 为 DshStatus）
+    pub const DSH_STATUS: &str = "dsh-status";
+
+    /// DSH 集成：通知事件（payload 为 {"kind": "ready"|"completed"|"failed"|"down"}）
+    pub const DSH_NOTIFY: &str = "dsh-notify";
+}
+
+// ========================================================================= //
+// 错误处理
+// ========================================================================= //
+
+/// 事件发送错误
+#[derive(Debug)]
+pub enum EmitError {
+    /// Tauri Emitter 错误
+    EmitterError(tauri::Error),
+}
+
+impl fmt::Display for EmitError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            EmitError::EmitterError(e) => write!(f, "Emitter error: {}", e),
+        }
+    }
+}
+
+impl std::error::Error for EmitError {}
+
+impl From<tauri::Error> for EmitError {
+    fn from(error: tauri::Error) -> Self {
+        EmitError::EmitterError(error)
+    }
+}
+
+// ========================================================================= //
+// 配置选项
+// ========================================================================= //
+
+/// 事件发送选项
+///
+/// 控制事件发送失败时的行为。
+#[derive(Debug, Clone, Copy, Default)]
+pub enum EmitOptions {
+    /// 默认选项：失败时静默忽略（仅日志记录）
+    #[default]
+    Silent,
+
+    /// 失败时记录错误日志
+    LogOnFailure,
+
+    /// 失败时记录错误日志并返回错误
+    FailOnFailure,
+}
+
+impl EmitOptions {
+    /// 创建失败时记录日志的选项
+    pub fn log_on_error() -> Self {
+        Self::LogOnFailure
+    }
+
+    /// 创建失败时返回错误的选项
+    pub fn fail_on_error() -> Self {
+        Self::FailOnFailure
+    }
+
+    /// 判断失败时是否应该记录日志
+    fn should_log(self) -> bool {
+        matches!(self, Self::LogOnFailure | Self::FailOnFailure)
+    }
+
+    /// 判断失败时是否应该返回错误
+    fn should_fail(self) -> bool {
+        matches!(self, Self::FailOnFailure)
+    }
+}
+
+// ========================================================================= //
+// 公共函数
+// ========================================================================= //
+
+/// 发送事件到前端（默认选项，从 AppHandle）
+///
+/// 使用默认的 `Silent` 选项，失败时仅记录日志。
+///
+/// # 参数
+///
+/// * `app` - Tauri 应用句柄
+/// * `event` - 事件名称（推荐使用 `events` 模块中的常量）
+/// * `payload` - 事件负载，需要实现 `serde::Serialize` 和 `Clone`
+///
+/// # 返回
+///
+/// 总是返回 `Ok(())`，即使发送失败也会被捕获。
+///
+/// # 示例
+///
+/// ```text
+/// emit(&app_handle, events::VOLUME_CHANGE, volume)?;
+/// ```
+pub fn emit<T: serde::Serialize + Clone>(
+    app: &AppHandle,
+    event: &str,
+    payload: T,
+) -> Result<(), EmitError> {
+    emit_with_options(app, event, payload, EmitOptions::default())
+}
+
+/// 发送事件到前端（默认选项，从 Window）
+///
+/// 使用默认的 `Silent` 选项，失败时仅记录日志。
+///
+/// # 参数
+///
+/// * `window` - Tauri 窗口句柄
+/// * `event` - 事件名称（推荐使用 `events` 模块中的常量）
+/// * `payload` - 事件负载，需要实现 `serde::Serialize` 和 `Clone`
+///
+/// # 返回
+///
+/// 总是返回 `Ok(())`，即使发送失败也会被捕获。
+///
+/// # 示例
+///
+/// ```text
+/// emit_from_window(&window, events::WINDOW_POSITION_CHANGED, (x, y))?;
+/// ```
+pub fn emit_from_window<T: serde::Serialize + Clone>(
+    window: &WebviewWindow,
+    event: &str,
+    payload: T,
+) -> Result<(), EmitError> {
+    emit_with_options_window(window, event, payload, EmitOptions::default())
+}
+
+/// 发送事件到前端（默认选项，从 Tauri Window）
+///
+/// 使用默认的 `Silent` 选项，失败时仅记录日志。
+/// 此函数接受 `tauri::Window` 类型，兼容 `on_window_event` 回调。
+///
+/// # 参数
+///
+/// * `window` - Tauri 窗口句柄（Window 类型）
+/// * `event` - 事件名称（推荐使用 `events` 模块中的常量）
+/// * `payload` - 事件负载，需要实现 `serde::Serialize` 和 `Clone`
+///
+/// # 返回
+///
+/// 总是返回 `Ok(())`，即使发送失败也会被捕获。
+///
+/// # 示例
+///
+/// ```text
+/// .on_window_event(|window, event| {
+///     match event {
+///         tauri::WindowEvent::Moved(_) => {
+///             emit_from_tauri_window(&window, events::WINDOW_POSITION_CHANGED, (x, y))?;
+///         }
+///         _ => {}
+///     }
+/// })
+/// ```
+pub fn emit_from_tauri_window<T: serde::Serialize + Clone>(
+    window: &tauri::Window,
+    event: &str,
+    payload: T,
+) -> Result<(), EmitError> {
+    match window.emit(event, payload) {
+        Ok(_) => Ok(()),
+        Err(e) => {
+            eprintln!(
+                "[EventManager] Failed to emit event '{}': {}",
+                event, e
+            );
+            Ok(())
+        }
+    }
+}
+
+/// 发送事件到前端（带选项，从 AppHandle）
+///
+/// 提供灵活的错误处理策略。
+///
+/// # 参数
+///
+/// * `app` - Tauri 应用句柄
+/// * `event` - 事件名称（推荐使用 `events` 模块中的常量）
+/// * `payload` - 事件负载，需要实现 `serde::Serialize` 和 `Clone`
+/// * `options` - 发送选项，控制失败时的行为
+///
+/// # 返回
+///
+/// - `Ok(())` - 事件发送成功（或失败但选项允许忽略）
+/// - `Err(EmitError)` - 事件发送失败且选项要求返回错误
+///
+/// # 示例
+///
+/// ```text
+/// // 基本使用（失败时静默）
+/// emit(&app_handle, events::SETTINGS_CHANGE, settings)?;
+///
+/// // 失败时记录日志
+/// emit_with_options(
+///     &app_handle,
+///     events::SETTINGS_CHANGE,
+///     settings,
+///     EmitOptions::log_on_error(),
+/// )?;
+///
+/// // 失败时返回错误
+/// emit_with_options(
+///     &app_handle,
+///     events::SETTINGS_CHANGE,
+///     settings,
+///     EmitOptions::fail_on_error(),
+/// )?;
+/// ```
+pub fn emit_with_options<T: serde::Serialize + Clone>(
+    app: &AppHandle,
+    event: &str,
+    payload: T,
+    options: EmitOptions,
+) -> Result<(), EmitError> {
+    match app.emit(event, payload) {
+        Ok(_) => Ok(()),
+        Err(e) => {
+            if options.should_log() {
+                eprintln!(
+                    "[EventManager] Failed to emit event '{}': {}",
+                    event, e
+                );
+            }
+            if options.should_fail() {
+                Err(EmitError::EmitterError(e))
+            } else {
+                Ok(())
+            }
+        }
+    }
+}
+
+/// 发送事件到前端（带选项，从 Window）
+///
+/// 提供灵活的错误处理策略。
+///
+/// # 参数
+///
+/// * `window` - Tauri 窗口句柄
+/// * `event` - 事件名称（推荐使用 `events` 模块中的常量）
+/// * `payload` - 事件负载，需要实现 `serde::Serialize` 和 `Clone`
+/// * `options` - 发送选项，控制失败时的行为
+///
+/// # 返回
+///
+/// - `Ok(())` - 事件发送成功（或失败但选项允许忽略）
+/// - `Err(EmitError)` - 事件发送失败且选项要求返回错误
+pub fn emit_with_options_window<T: serde::Serialize + Clone>(
+    window: &WebviewWindow,
+    event: &str,
+    payload: T,
+    options: EmitOptions,
+) -> Result<(), EmitError> {
+    match window.emit(event, payload) {
+        Ok(_) => Ok(()),
+        Err(e) => {
+            if options.should_log() {
+                eprintln!(
+                    "[EventManager] Failed to emit event '{}': {}",
+                    event, e
+                );
+            }
+            if options.should_fail() {
+                Err(EmitError::EmitterError(e))
+            } else {
+                Ok(())
+            }
+        }
+    }
+}
+
+// ========================================================================= //
+// 专用辅助函数
+// ========================================================================= //
+
+/// 发送设置变更事件
+///
+/// 发送完整的 UserSettings 对象到前端。
+///
+/// # 参数
+///
+/// * `app` - Tauri 应用句柄
+/// * `settings` - 设置对象（需要实现 `serde::Serialize`）
+///
+/// # 示例
+///
+/// ```text
+/// emit_settings(&app, &settings)?;
+/// ```
+pub fn emit_settings<T: serde::Serialize>(
+    app: &AppHandle,
+    settings: &T,
+) -> Result<(), EmitError> {
+    emit_with_options(app, events::SETTINGS_CHANGE, settings, EmitOptions::default())
+}
+
+/// 发送调试信息更新事件
+///
+/// 用于调试面板的数据更新。
+///
+/// # 参数
+///
+/// * `app` - Tauri 应用句柄
+/// * `event_type` - 调试事件类型（system / media）
+/// * `debug_info` - 调试信息对象（需要实现 `serde::Serialize`）
+pub fn emit_debug_update<T: serde::Serialize>(
+    app: &AppHandle,
+    event_type: &str,
+    debug_info: &T,
+) -> Result<(), EmitError> {
+    let event_name = match event_type {
+        DEBUG_EVENT_TYPE_SYSTEM => events::SYSTEM_DEBUG_UPDATE,
+        DEBUG_EVENT_TYPE_MEDIA => events::MEDIA_DEBUG_UPDATE,
+        DEBUG_EVENT_TYPE_PROCESS => events::PROCESS_DEBUG_UPDATE,
+        DEBUG_EVENT_TYPE_AI_TOOL => events::AI_TOOL_DEBUG_UPDATE,
+        _ => {
+            eprintln!("[EventManager] Unknown debug event type: {}", event_type);
+            return Ok(());
+        }
+    };
+
+    emit_with_options(app, event_name, debug_info, EmitOptions::log_on_error())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // ========================================================================= //
+    // EmitOptions
+    // ========================================================================= //
+
+    #[test]
+    fn emit_options_flags() {
+        assert!(EmitOptions::default().should_log() == false);
+        assert!(EmitOptions::default().should_fail() == false);
+
+        let log = EmitOptions::log_on_error();
+        assert!(log.should_log());
+        assert!(!log.should_fail());
+
+        let fail = EmitOptions::fail_on_error();
+        assert!(fail.should_log());
+        assert!(fail.should_fail());
+    }
+
+    // (emit_options_silent/log/fail individual tests → covered by emit_options_flags)
+    // (emit_options_default_is_silent → covered by emit_options_flags)
+    // (emit_error_display_format → removed: doesn't test EmitError, tests string literal)
+
+    // ========================================================================= //
+    // Event name constants
+    // ========================================================================= //
+
+    #[test]
+    fn event_constants_are_stable() {
+        assert_eq!(events::SETTINGS_CHANGE, "settings-change");
+        assert_eq!(events::MUTE_CHANGE, "mute-change");
+        assert_eq!(events::VOLUME_CHANGE, "volume-change");
+        assert_eq!(events::STATE_CHANGE, "state-change");
+        assert_eq!(events::REFRESH_MODS, "refresh-mods");
+        assert_eq!(events::WINDOW_POSITION_CHANGED, "window-position-changed");
+        assert_eq!(events::LAYOUT_DEBUGGER_STATUS, "layout-debugger-status");
+        assert_eq!(events::SYSTEM_DEBUG_UPDATE, "system-debug-update");
+        assert_eq!(events::MEDIA_DEBUG_UPDATE, "media-debug-update");
+        assert_eq!(events::PROCESS_DEBUG_UPDATE, "process-debug-update");
+        assert_eq!(events::ENVIRONMENT_UPDATED, "environment-updated");
+        assert_eq!(events::MOD_DATA_CHANGED, "mod-data-changed");
+    }
+
+    // ========================================================================= //
+    // Debug event type constants
+    // ========================================================================= //
+
+    #[test]
+    fn debug_event_types_are_stable() {
+        assert_eq!(DEBUG_EVENT_TYPE_SYSTEM, "system");
+        assert_eq!(DEBUG_EVENT_TYPE_MEDIA, "media");
+        assert_eq!(DEBUG_EVENT_TYPE_PROCESS, "process");
+    }
+
+    // ========================================================================= //
+    // EmitOptions Copy/Clone
+    // ========================================================================= //
+
+    #[test]
+    fn emit_options_is_copy() {
+        let a = EmitOptions::log_on_error();
+        let b = a; // Copy
+        assert!(b.should_log());
+        assert!(a.should_log()); // a is still valid (Copy)
+    }
+
+    #[test]
+    fn emit_options_clone() {
+        let a = EmitOptions::fail_on_error();
+        let b = a.clone();
+        assert!(b.should_fail());
+    }
+}
+

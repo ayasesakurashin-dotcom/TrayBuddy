@@ -1,0 +1,72 @@
+[
+  {
+    "name": "login_1",
+    "text": "You opened this mod.\nThat proves you are a warrior.",
+    "duration": 3
+  },
+  {
+    "name": "login_2",
+    "text": "But the game is over now.\nI'm going to play rock-paper-scissors with you **personally**.",
+    "duration": 3
+  },
+  {
+    "name": "click",
+    "text": "What will you choose?",
+    "duration": 3
+  },
+  {
+    "name": "click_button_s",
+    "text": "Rock",
+    "duration": 3
+  },
+  {
+    "name": "click_button_j",
+    "text": "Scissors",
+    "duration": 3
+  },
+  {
+    "name": "click_button_b",
+    "text": "Paper",
+    "duration": 3
+  },
+  {
+    "name": "knight_s",
+    "text": "The Knight Captain used **Rock**",
+    "duration": 3
+  },
+  {
+    "name": "knight_j",
+    "text": "The Knight Captain used **Scissors**",
+    "duration": 3
+  },
+  {
+    "name": "knight_b",
+    "text": "The Knight Captain used **Paper**",
+    "duration": 3
+  },
+  {
+    "name": "win_1",
+    "text": "You think you're already that strong?\n**Heh heh, wrong!**",
+    "duration": 3
+  },
+  {
+    "name": "win_2",
+    "text": "I was just not in top form today.\nI'm leaving. Come challenge me to rock-paper-scissors again if you dare.",
+    "duration": 3
+  },
+  {
+    "name": "lose",
+    "text": "To you, I am like a god — invincible.",
+    "duration": 3
+  },
+  {
+    "name": "none",
+    "text": "You dare flee from battle!",
+    "duration": 3
+  },
+  {
+    "name": "ping",
+    "text": "I'll let you off this time. Next time we meet, I'll duel you for real. You'd better surrender.",
+    "duration": 3
+  }
+]

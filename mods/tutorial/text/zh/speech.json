@@ -1,0 +1,67 @@
+[
+  {
+    "name": "text1",
+    "text": "欢迎使用TrayBuddy！\n接下来我将简单介绍这个应用",
+    "duration": 3
+  },
+  {
+    "name": "text2",
+    "text": "托盘好友(TrayBuddy)是一款支持加密的多模型桌宠",
+    "duration": 3
+  },
+  {
+    "name": "text3",
+    "text": "本程序致力于将各种桌宠的资源使用单个程序管理",
+    "duration": 3
+  },
+  {
+    "name": "text4",
+    "text": "作者当时想多个桌宠来回用，又不想下载很多桌宠程序，于是发起了这个项目",
+    "duration": 3
+  },
+  {
+    "name": "text5",
+    "text": "你可以 右键->mod管理 来使用多种桌宠",
+    "duration": 3
+  },
+  {
+    "name": "text6",
+    "text": "本程序支持你对自己的桌宠包加密\n加密后的包只能由本程序解析而拿不到内部的动画资源",
+    "duration": 3
+  },
+  {
+    "name": "text7",
+    "text": "适合一些想展示自己动画模型，但又不想被拿去滥用的朋友们",
+    "duration": 3
+  },
+  {
+    "name": "text8",
+    "text": "此外，本程序还有各种附加功能",
+    "duration": 3
+  },
+  {
+    "name": "text10",
+    "text": "我们有mod编辑器，可以自定义动画文本语音的组合",
+    "duration": 3
+  },
+  {
+    "name": "text9",
+    "text": "我们有mod版本管理，支持你对自己的作品进行更新迭代",
+    "duration": 3
+  },
+  {
+    "name": "text11",
+    "text": "程序还支持备忘录和定时提醒功能",
+    "duration": 3
+  },
+  {
+    "name": "text12",
+    "text": "我们会不断完善，后续增加更多的资源一键生成mod包的工具",
+    "duration": 3
+  },
+  {
+    "name": "text13",
+    "text": "最后，希望这款应用能真正的为您带来快乐",
+    "duration": 3
+  }
+]

@@ -1,0 +1,87 @@
+{
+  "title": "WebM ↔ MOV Converter",
+  "logo": "WebM ↔ MOV Converter",
+  "mode_webm2mov": "WebM → MOV",
+  "mode_mov2webm": "MOV → WebM",
+  "mode_toggle_aria": "Conversion mode toggle",
+
+  "reset_btn": "Restart",
+
+
+  "upload_title_webm2mov": "Click or drag a WebM video file here",
+  "upload_hint_webm2mov": "Supports WebM (VP8/VP9) video with alpha channel",
+  "upload_title_mov2webm": "Click or drag a MOV video file here",
+  "upload_hint_mov2webm": "Convert MOV to WebM (supports PNG-in-MOV exported by the Background Remover tool; prefer VP9, VP8 for compatibility)",
+
+  "preview_title": "Video Preview",
+  "preview_original": "Source Video",
+  "preview_frame": "Current Frame Preview",
+
+  "play": "Play",
+  "pause": "Pause",
+
+  "settings_title": "Conversion Settings",
+  "fps_label": "Output FPS",
+  "fps_auto": "Auto Detect",
+  "fps_24": "24 FPS",
+  "fps_25": "25 FPS",
+  "fps_30": "30 FPS",
+  "fps_60": "60 FPS",
+  "video_info": "{size} | {fps} FPS | {duration}",
+
+
+
+  "mov_codec_label": "MOV Codec",
+  "codec_png": "PNG (Lossless, Alpha Support)",
+  "codec_rgba": "RGBA Raw (Lossless, Larger File)",
+
+  "webm_format_label": "WebM Codec",
+  "format_webm_vp9": "WebM VP9 (Recommended)",
+  "format_webm_vp8": "WebM VP8 (More Compatible)",
+
+  "quality_label": "Quality",
+  "quality_high": "High",
+  "quality_medium": "Medium",
+  "quality_low": "Low (Smaller File)",
+
+  "transparency_info_webm2mov": "This tool preserves transparent pixels at pixel level. The generated MOV can be used in Final Cut Pro, After Effects, DaVinci Resolve and other professional software.",
+  "transparency_info_mov2webm": "Your browser must be able to decode the MOV you upload (H.264/H.265 are more likely to work). For PNG-in-MOV exported by the Background Remover tool, this tool will automatically parse frames and convert.",
+
+  "convert_btn_webm2mov": "Convert to MOV",
+  "convert_btn_mov2webm": "Convert to WebM",
+
+  "alpha_analysis_title": "Alpha Channel Analysis",
+  "stat_transparent": "Transparent",
+  "stat_semi": "Semi-transparent",
+  "stat_opaque": "Opaque",
+  "alpha_preview": "Alpha Channel Visualization",
+  "alpha_hint_webm2mov": "Tip: The stats and visualization below are computed from the pixel data of the current preview frame (checkerboard indicates transparency).",
+  "alpha_hint_mov2webm": "Tip: The stats and visualization below are for checking MOV alpha. If your browser can't read alpha from the MOV, it may show as 100% opaque. PNG-in-MOV exported by the Background Remover tool is supported.",
+
+
+  "processing": "Processing...",
+  "extracting_frames": "Extracting frames...",
+  "encoding_mov": "Encoding MOV...",
+  "encoding_webm": "Encoding WebM...",
+
+  "alert_webm_only": "Please upload a WebM video file",
+  "alert_mov_only": "Please upload a MOV video file",
+  "alert_decode_failed": "Your browser can't decode this video. Try a more widely supported encoding (e.g. H.264 MOV), or re-encode it with ffmpeg/editor.",
+  "mov_preview_unavailable": "This MOV can't be previewed in the browser, but it can still be converted",
+
+  "debug_panel_title": "Debug Logs (debug=1)",
+  "debug_expand": "Expand",
+  "debug_collapse": "Collapse",
+  "debug_copy": "Copy",
+  "debug_clear": "Clear",
+  "debug_hide": "Hide",
+
+  "error_frames_too_many": "Too many frames ({count}). Please lower FPS or shorten the video duration.",
+  "error_raw_frame_invalid": "RAW frame data length is invalid: {actual} < {expected}",
+  "error_mov_codec_unsupported": "Unsupported MOV codec: {codec}",
+  "error_webcodecs_alpha_unsupported": "WebCodecs alpha encoding is not supported; falling back to MediaRecorder",
+  "error_no_supported_codec": "No supported video codec found",
+  "error_video_encoder": "VideoEncoder error: {message}",
+  "error_processing": "Processing error: "
+
+}

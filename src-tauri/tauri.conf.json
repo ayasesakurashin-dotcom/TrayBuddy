@@ -1,0 +1,70 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "traybuddy",
+  "version": "0.2.0",
+  "identifier": "com.traybuddy.cafel",
+  "build": {
+    "beforeDevCommand": "pnpm dev",
+    "devUrl": "http://localhost:1420",
+    "beforeBuildCommand": "pnpm build",
+    "frontendDist": "../build"
+  },
+  "app": {
+    "windows": [],
+    "security": {
+      "csp": null,
+      "assetProtocol": {
+        "enable": true,
+        "scope": [
+          "**"
+        ]
+      }
+    },
+    "withGlobalTauri": false
+  },
+  "bundle": {
+    "active": true,
+    "targets": "nsis",
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.ico",
+      "icons/tbuddy.ico",
+      "icons/sbuddy.ico"
+    ],
+    "resources": {
+      "../config": "config",
+      "../i18n": "i18n",
+      "../mods": "mods",  
+      "../tbuddy_release": "mods",  
+      "../sbuddy_secure": "mods", 
+      "../mod-tool": "mod-tool",
+      "../other-tool": "other-tool",
+      "../tools-common": "tools-common",
+      "../static": "static",
+      "icons": "icons"
+    },
+    "fileAssociations": [
+      {
+        "ext": ["tbuddy"],
+        "name": "TrayBuddy Mod Package",
+        "description": "TrayBuddy Mod Package"
+      },
+      {
+        "ext": ["sbuddy"],
+        "name": "TrayBuddy Secure Mod Package",
+        "description": "TrayBuddy Encrypted Mod Package"
+      }
+    ],
+    "windows": {
+      "nsis": {
+        "languages": ["SimpChinese", "TradChinese", "English", "Japanese"],
+        "displayLanguageSelector": true,
+        "installerIcon": "icons/icon.ico",
+        "installMode": "perMachine",
+        "installerHooks": "nsis-hooks.nsh"
+      }
+    }
+  }
+}

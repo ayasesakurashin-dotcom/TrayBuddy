@@ -1,0 +1,3043 @@
+/**
+ * PngRemix 渲染引擎
+ *
+ * other-tool/pngRemix预览/app.js 的渲染核心移植为 TypeScript class
+ * 提供Live2DPlayer 相同的公API，供 pngremix/+page.svelte 集成
+ */
+
+import type {
+  PngRemixConfig,
+  PngRemixExpression,
+  PngRemixMotion,
+  PngRemixParameterSetting,
+} from "$lib/types/asset";
+import { invoke } from "@tauri-apps/api/core";
+import { buildModAssetUrl } from "$lib/utils/modAssetUrl";
+import { capFps, getRenderDpr, isAntialiasEnabled, IdleThrottle } from "./render_tuning";
+import {
+  normalizeFsPath,
+  normalizeStartDim,
+  Mat2D,
+  clamp,
+  toRad,
+  lerp,
+  wrapAngleRad,
+  lerpAngle,
+  moveToward,
+  wrap01,
+  quantize01,
+  mulColor,
+  rgbToHsv,
+  hsvToRgb,
+  compositeForBlendMode,
+  bytesToHex,
+  simpleBytesSignature,
+  isGifBytes,
+  isPngBytes,
+  pngHasChunk,
+  tryReadPngSize,
+  tryReadGifSize,
+  type RGBA,
+  type PngRemixBlendMode,
+} from "./animation_utils";
+
+
+type BackendModInfo = {
+  path?: string;
+  manifest?: {
+    enable_texture_downsample?: boolean;
+    texture_downsample_start_dim?: number;
+  };
+} | null;
+
+// normalizeFsPath, normalizeStartDim 已提取到 animation_utils.ts
+
+function sleepMs(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+type TextureDownsampleSettings = {
+  enabled: boolean;
+  startDim: number;
+};
+
+/**
+ * 从后端读取当Mod 的贴图降采样设置
+ * - manifest.enable_texture_downsample
+ * - manifest.texture_downsample_start_dim
+ *
+ * 说明
+ * - **启动/切换 Mod** 时以 backend `get_current_mod` 为准，避免前端传缓存造成时序错乱
+ * - 若后current_mod path 与本init `expectedModPath` 不一致，会短暂重试
+ * - 两个字段在同一`get_current_mod` 里读取，避免切换时出现“读到不mod 的字段”的竞态
+ */
+async function resolveTextureDownsampleSettingsFromBackend(
+  expectedModPath: string,
+  fallback?: Partial<TextureDownsampleSettings>,
+): Promise<TextureDownsampleSettings> {
+  const expected = normalizeFsPath(expectedModPath);
+
+  const fbEnabled = typeof fallback?.enabled === "boolean" ? fallback.enabled : null;
+  const fbStartDim = normalizeStartDim(fallback?.startDim);
+
+  let lastEnabled: boolean | null = null;
+  let lastStartDim: number | null = null;
+
+  for (let i = 0; i < 8; i++) {
+    try {
+      const mod = (await invoke("get_current_mod")) as BackendModInfo;
+      const p = mod?.path ? normalizeFsPath(String(mod.path)) : "";
+
+      const vEnabled = mod?.manifest?.enable_texture_downsample;
+      if (typeof vEnabled === "boolean") {
+        lastEnabled = vEnabled;
+      }
+
+      const vStartDim = normalizeStartDim(mod?.manifest?.texture_downsample_start_dim);
+      if (vStartDim !== null) {
+        lastStartDim = vStartDim;
+      }
+
+      const enabled = lastEnabled ?? fbEnabled;
+      const startDim = lastStartDim ?? fbStartDim;
+
+      if (expected && p && p === expected && enabled !== null && startDim !== null) {
+        return { enabled, startDim };
+      }
+
+      if (!expected && enabled !== null && startDim !== null) {
+        return { enabled, startDim };
+      }
+
+    } catch {
+      // ignore
+    }
+
+    if (i < 7) await sleepMs(80);
+  }
+
+  return {
+    enabled: lastEnabled ?? fbEnabled ?? false,
+    startDim: lastStartDim ?? fbStartDim ?? 0,
+  };
+}
+
+
+// ============================================================================
+// 全局脚本加载
+// ============================================================================
+
+let _scriptsLoaded = false;
+let _scriptsPromise: Promise<void> | null = null;
+
+function loadScript(src: string): Promise<void> {
+  return new Promise((resolve, reject) => {
+    if (document.querySelector(`script[src="${src}"]`)) {
+      resolve();
+      return;
+    }
+    const s = document.createElement("script");
+    s.src = src;
+    s.onload = () => resolve();
+    s.onerror = () => reject(new Error(`Failed to load ${src}`));
+    document.head.appendChild(s);
+  });
+}
+
+async function ensureScripts(): Promise<void> {
+  if (_scriptsLoaded) return;
+  if (_scriptsPromise) return _scriptsPromise;
+  _scriptsPromise = (async () => {
+    await loadScript("/pngremix-decoder.js");
+    await loadScript("/model-normalizer.js");
+    _scriptsLoaded = true;
+  })();
+  return _scriptsPromise;
+}
+
+// ============================================================================
+// Upscale quality control（降采样后放大策略）
+// ============================================================================
+
+const PNGREMIX_UPSCALE_MODE_KEY = "tb_pngremix_upscale_mode";
+
+/**
+ * 降采样后放大策略（可通过 localStorage `tb_pngremix_upscale_mode` 控制
+ *
+ * 可选项
+ * - "high"（默认）：开启平滑，`imageSmoothingQuality = "high"`，整体更柔和
+ * - "pixelated"：关闭平滑，像素边缘更硬（也接受别名nearest" / "none"
+ */
+type PngRemixUpscaleMode = "high" | "pixelated";
+
+const PNGREMIX_UPSCALE_MODE_DEFAULT: PngRemixUpscaleMode = "high";
+
+/**
+ * Canvas 2D 平滑质量可选项low" / "medium" / "high"
+ * 仅在 `PngRemixUpscaleMode` "high" 时生效
+ */
+
+function readLocalStorageString(key: string, fallback: string): string {
+  try {
+    const v = localStorage.getItem(key);
+    if (v === null || v === undefined) return fallback;
+    const s = String(v).trim();
+    return s ? s : fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+function getPngRemixUpscaleMode(): PngRemixUpscaleMode {
+  const v = readLocalStorageString(PNGREMIX_UPSCALE_MODE_KEY, PNGREMIX_UPSCALE_MODE_DEFAULT).toLowerCase();
+  if (v === "pixelated" || v === "nearest" || v === "none") return "pixelated";
+  return PNGREMIX_UPSCALE_MODE_DEFAULT;
+}
+
+function getPngRemixTextureFilter(gl: WebGLRenderingContext): number {
+  return getPngRemixUpscaleMode() === "pixelated" ? gl.NEAREST : gl.LINEAR;
+}
+
+// Mat2D 已提取到 animation_utils.ts
+
+// ============================================================================
+// 数学 / 颜色 / 混合工具（已提取到 animation_utils.ts）
+// ============================================================================
+
+interface Vec2 { x: number; y: number }
+
+// ============================================================================
+// 图像解码（支持解码期降采封顶：逻辑尺寸=原图，像素数据可更小
+// ============================================================================
+
+// 贴图解码策略默认阈值（仅作用于本文件的降采封顶逻辑
+// maxDim 已改为动态从后端（manifest.texture_downsample_start_dim）获取，因此不再需要静态默认值常量
+const TEXTURE_DECODE_MIN_SCALE = 0.05;
+const TEXTURE_DECODE_NO_RESIZE_EPS = 0.999;
+const TEXTURE_DECODE_RESIZE_QUALITY = "high" as any;
+
+// 贴图去重：对同内bytes 只解码一次，避免重复贴图占用多份内存
+const TEXTURE_DEDUP_HASH_ALGO = "SHA-256";
+const TEXTURE_DEDUP_FALLBACK_SAMPLE_BYTES = 32;
+const _bytesHashKeyCache = new WeakMap<Uint8Array, Promise<string>>();
+
+// 按需解码/缓存/LRU 回收
+const TEXTURE_STREAM_DECODE_CONCURRENCY = 4;
+const TEXTURE_STREAM_REQUEST_COOLDOWN_MS = 200;
+
+// LRU 预算（估算：像素* 像素* 4 bytes
+const TEXTURE_LRU_MAX_ITEMS_DEFAULT = 10;
+const TEXTURE_LRU_TRIM_GUARD_RATIO = 0.92; // 超预算后尽量裁到预算92%
+
+
+// bytesToHex, simpleBytesSignature, isGifBytes, isPngBytes, pngHasChunk, tryReadPngSize, tryReadGifSize
+// 已提取到 animation_utils.ts
+
+async function getBytesHashKey(bytes: Uint8Array): Promise<string> {
+  const cached = _bytesHashKeyCache.get(bytes);
+  if (cached) return cached;
+
+  const p = (async () => {
+    const cryptoObj: any = (globalThis as any).crypto;
+    if (cryptoObj?.subtle?.digest) {
+      const digest = await cryptoObj.subtle.digest(TEXTURE_DEDUP_HASH_ALGO, bytes);
+      return `${TEXTURE_DEDUP_HASH_ALGO.toLowerCase()}:${bytesToHex(new Uint8Array(digest))}`;
+    }
+    return `sig:${simpleBytesSignature(bytes)}`;
+  })();
+
+  _bytesHashKeyCache.set(bytes, p);
+  return p;
+}
+
+type TextureDecodePolicy = {
+  /** 贴图解码分辨率封顶（像素）；<=0 表示不封*/
+  maxDim: number;
+  /** 额外降采样倍率-1）；<=0 视为 1 */
+  scale: number;
+  /** 触发降采样的起始贴图尺寸阈值（像素；最长边）；<=0 表示不限*/
+  startDim: number;
+};
+
+// isGifBytes, isPngBytes, pngHasChunk, tryReadPngSize, tryReadGifSize 已提取到 animation_utils.ts
+
+function getImageSize(d: any): { w: number; h: number } {
+  // 实际像素尺寸（解码后drawable 尺寸
+  if (!d) return { w: 0, h: 0 };
+  if (typeof ImageBitmap !== "undefined" && d instanceof ImageBitmap) return { w: d.width, h: d.height };
+  if (d instanceof HTMLImageElement) return { w: d.naturalWidth || d.width, h: d.naturalHeight || d.height };
+  if (d instanceof HTMLCanvasElement) return { w: d.width, h: d.height };
+  return { w: 0, h: 0 };
+}
+
+function getImageLogicalSize(d: any): { w: number; h: number } {
+  // 逻辑尺寸（用于布局/帧切裁剪）：默认等于实际像素尺寸，但支持在降采样时保持原图尺
+  if (!d) return { w: 0, h: 0 };
+  const lw = Number((d as any)._logicalW);
+  const lh = Number((d as any)._logicalH);
+  if (Number.isFinite(lw) && Number.isFinite(lh) && lw > 0 && lh > 0) return { w: lw, h: lh };
+  return getImageSize(d);
+}
+
+
+function computeDecodeTarget(logicalW: number, logicalH: number, policy: TextureDecodePolicy | null | undefined): { w: number; h: number; scale: number } {
+  const w0 = Math.max(1, Math.floor(Number(logicalW) || 1));
+  const h0 = Math.max(1, Math.floor(Number(logicalH) || 1));
+  if (!policy) return { w: w0, h: h0, scale: 1 };
+
+  const denom0 = Math.max(w0, h0);
+  const startDim = Number(policy.startDim);
+  if (Number.isFinite(startDim) && startDim > 0 && denom0 > 0 && denom0 < startDim) {
+    // 未达到阈值：不触发降采样
+    return { w: w0, h: h0, scale: 1 };
+  }
+
+  const baseScale = clamp(Number(policy.scale) || 1, TEXTURE_DECODE_MIN_SCALE, 1);
+
+  let s = baseScale;
+  const maxDim = Number(policy.maxDim);
+  if (Number.isFinite(maxDim) && maxDim > 0) {
+    const denom = Math.max(w0, h0);
+    if (denom > 0) s = Math.min(s, maxDim / denom);
+  }
+  s = clamp(s, TEXTURE_DECODE_MIN_SCALE, 1);
+
+
+  const tw = Math.max(1, Math.round(w0 * s));
+  const th = Math.max(1, Math.round(h0 * s));
+  return { w: tw, h: th, scale: s };
+}
+
+async function decodePngBytesToDrawable(bytes: Uint8Array, _name = "", policy?: TextureDecodePolicy | null): Promise<any> {
+  if (bytes.length < 6) return null;
+  const isGif = isGifBytes(bytes);
+  const isPng = isPngBytes(bytes);
+  const isApng = isPng && pngHasChunk(bytes, "acTL");
+  const isAnimated = isGif || isApng;
+  const mime = isGif ? "image/gif" : isPng ? "image/png" : "application/octet-stream";
+
+  // 逻辑尺寸（优先从头部快速读取；失败时在解码后回填）
+  const headerSize = isPng ? tryReadPngSize(bytes) : isGif ? tryReadGifSize(bytes) : null;
+  const logicalW = headerSize?.w ?? 0;
+  const logicalH = headerSize?.h ?? 0;
+  const target = (!isAnimated && logicalW > 0 && logicalH > 0) ? computeDecodeTarget(logicalW, logicalH, policy) : { w: logicalW, h: logicalH, scale: 1 };
+
+  const blob = new Blob([bytes], { type: mime });
+
+  // 非动PNG：优先用 createImageBitmap 直接缩放解码，避免先解出大图
+  if (!isAnimated && mime === "image/png" && typeof createImageBitmap === "function") {
+    try {
+      const needsResize = logicalW > 0 && logicalH > 0 && target.scale < TEXTURE_DECODE_NO_RESIZE_EPS;
+
+      const bitmap = needsResize
+        ? await createImageBitmap(blob, {
+          resizeWidth: target.w,
+          resizeHeight: target.h,
+          premultiplyAlpha: "none",
+          // DOM lib resizeQuality union 可能不完整，这里做一下兼
+          resizeQuality: TEXTURE_DECODE_RESIZE_QUALITY,
+
+        } as any)
+        : await createImageBitmap(blob, {
+          premultiplyAlpha: "none",
+        } as any);
+
+      (bitmap as any)._logicalW = logicalW > 0 ? logicalW : bitmap.width;
+      (bitmap as any)._logicalH = logicalH > 0 ? logicalH : bitmap.height;
+      return bitmap;
+    } catch {
+      /* fall through */
+    }
+  }
+
+  // fallback：HTMLImageElement（动GIF/APNG 也走这里，浏览器负责播放
+  const url = URL.createObjectURL(blob);
+  try {
+    const img = new Image();
+    img.decoding = "async";
+    img.src = url;
+    await img.decode();
+    if (isAnimated) (img as any)._isAnimated = true;
+
+    const decodedW = img.naturalWidth || img.width;
+    const decodedH = img.naturalHeight || img.height;
+    const lw = logicalW > 0 ? logicalW : decodedW;
+    const lh = logicalH > 0 ? logicalH : decodedH;
+
+    // Non-animated fallback: try bitmap resize decode without Canvas2D.
+    if (!isAnimated && lw > 0 && lh > 0) {
+      const t2 = computeDecodeTarget(lw, lh, policy);
+      if (t2.scale < TEXTURE_DECODE_NO_RESIZE_EPS && t2.w > 0 && t2.h > 0) {
+        if (typeof createImageBitmap === "function") {
+          try {
+            const bitmap = await createImageBitmap(img, {
+              resizeWidth: t2.w,
+              resizeHeight: t2.h,
+              premultiplyAlpha: "none",
+              resizeQuality: TEXTURE_DECODE_RESIZE_QUALITY,
+            } as any);
+            (bitmap as any)._logicalW = lw;
+            (bitmap as any)._logicalH = lh;
+            return bitmap;
+          } catch {
+            // fall through
+          }
+        }
+      }
+    }
+
+    (img as any)._logicalW = lw;
+    (img as any)._logicalH = lh;
+    return img;
+  } finally {
+    URL.revokeObjectURL(url);
+  }
+}
+
+type SpriteTextureTransform = {
+  flipH: boolean;
+  flipV: boolean;
+  rot: number;
+  swapLogicalWH: boolean;
+};
+
+function getSpriteTextureTransform(spriteRaw: any, allowLogicalSwap: boolean): SpriteTextureTransform | null {
+  if (!spriteRaw) return null;
+  const flipH = !!spriteRaw.flipped_h;
+  const flipV = !!spriteRaw.flipped_v;
+  const rot = ((Math.floor(Number(spriteRaw.rotated) || 0) % 4) + 4) % 4;
+  if (!flipH && !flipV && rot === 0) return null;
+  return { flipH, flipV, rot, swapLogicalWH: allowLogicalSwap && (rot % 2 === 1) };
+}
+
+function clearTintCache(): void {
+  // Tint is now applied in WebGL shader uniforms.
+}
+
+type FrameInfo = {
+  u0: number;
+  v0: number;
+  u1: number;
+  v1: number;
+  w: number;
+  h: number;
+};
+
+function getFrameInfo(
+  drawable: any,
+  hframes: number,
+  vframes: number,
+  frameIndex: number,
+  swapLogicalWH = false,
+): FrameInfo | null {
+  const src = getImageSize(drawable);
+  const dstRaw = getImageLogicalSize(drawable);
+  let dstW = dstRaw.w;
+  let dstH = dstRaw.h;
+  if (swapLogicalWH) {
+    const t = dstW;
+    dstW = dstH;
+    dstH = t;
+  }
+  if (!src.w || !src.h || !dstW || !dstH) return null;
+
+  const hf = Math.max(1, Math.floor(hframes || 1));
+  const vf = Math.max(1, Math.floor(vframes || 1));
+  const total = hf * vf;
+  const f = total > 0 ? ((Math.floor(frameIndex || 0) % total) + total) % total : 0;
+
+  const fx = (f % hf) / hf;
+  const fy = Math.floor(f / hf) / vf;
+  const fw = 1 / hf;
+  const fh = 1 / vf;
+
+  return {
+    u0: fx,
+    v0: fy,
+    u1: fx + fw,
+    v1: fy + fh,
+    w: dstW / hf,
+    h: dstH / vf,
+  };
+}
+
+
+// ============================================================================
+// RuntimeNode / RuntimeScene
+// ============================================================================
+
+/**
+ * 运行时节点：对应一sprite 的渲动画状态
+ *
+ * - runtime* 字段保存当前帧的动画结果
+ * - _follow/_move 为鼠标跟移动的中间态缓
+ * - key/path/pathIds 用于可见性覆盖与调试定位
+ */
+class RuntimeNode {
+
+  index: number;
+  spriteId: any;
+  parentId: any;
+  name: string;
+  type: string;
+  raw: any;
+
+  savedStatePatches: any[] = [];
+  materializedStates: any[] = [];
+  runtimeState: any = null;
+
+  runtimeFrame: number | null = null;
+  runtimeFrameOverride: number | null = null;
+  _frameAcc = 0;
+  runtimeWiggleRotation = 0;
+  _rainbowHue = Number.NaN;
+  _visiblePrev = false;
+  _visibleNow = false;
+  _texXform: SpriteTextureTransform | null = null;
+
+  baseWorldPos: Vec2 = { x: 0, y: 0 };
+  runtimeFollowPos: Vec2 = { x: 0, y: 0 };
+  runtimeFollowRot = 0;
+  runtimeFollowScale: Vec2 = { x: 1, y: 1 };
+  runtimeMovePos: Vec2 = { x: 0, y: 0 };
+  runtimeMoveRot = 0;
+  runtimeMoveScale: Vec2 = { x: 1, y: 1 };
+  runtimeAutoRot = 0;
+
+  _follow = {
+    targetPos: { x: 0, y: 0 }, currentDir: { x: 0, y: 0 }, currentDist: 0,
+    frameH: 0, frameV: 0,
+    lastMouseCoords: { x: 0, y: 0 }, lastDist: { x: 0, y: 0 },
+    dirVelAnimX: 0, dirVelAnimY: 0, scaleAxis: { x: 0, y: 0 },
+  };
+  _move = {
+    shadow: { x: 0, y: 0 }, prevShadow: { x: 0, y: 0 }, rot: 0,
+    scale: { x: 1, y: 1 }, pausedWobble: { x: 0, y: 0 }, pausedRot: 0,
+    shouldRot: 0, lastBaseWorldPos: { x: 0, y: 0 }, hasLastBaseWorldPos: false,
+  };
+
+  key = "";
+  path = "";
+  pathIds = "";
+  children: RuntimeNode[] = [];
+  accZ = 0;
+
+  constructor(sprite: any, index: number) {
+    this.index = index;
+    this.spriteId = sprite.spriteId;
+    this.parentId = sprite.parentId;
+    this.name = sprite.spriteName;
+    this.type = sprite.spriteType;
+    this.raw = sprite.raw;
+  }
+
+  getState(_stateId: number) {
+    return this.runtimeState && typeof this.runtimeState === "object" ? this.runtimeState : null;
+  }
+}
+
+/**
+ * 运行时场景：承载全局播放状态与节点索引
+ *
+ * - nodes/roots 为渲染树结构
+ * - visibilityOverrides/hotkeyGroups 用于快捷键与可见性切
+ * - tick/bounce/mouthState 等为动画全局参数
+ */
+class RuntimeScene {
+
+  model: any;
+  textureManager: SpriteTextureManager | null = null;
+
+  stateId = 0;
+  enableClip = true;
+  viewerJumpY = 0;
+  mouthState = 0;
+  blinking = false;
+  autoBlink = false;
+  _autoBlinkTimer: any = null;
+  _blinkTimeout: any = null;
+  playing = false;
+  tick = 0;
+  _rafId = 0;
+  _lastTs = 0;
+  _frameCount = 0; // 用于控制 LRU trim 频率
+  bounceChange = 0;
+  _bouncePosY = 0;
+  _lastBounceY = 0;
+  _clickBounce = { active: false, t: 0, dur: 0.5, amp: 50 };
+  hasAnimatedTextures = false;
+  onDrawableReleased: ((drawable: any) => void) | null = null;
+
+  // Visibility overrides keyed by RuntimeNode.key
+  // - boolean: quick override
+  // - { visible: boolean, source?: string, hotkey?: string }
+  visibilityOverrides: Record<string, any> = {};
+
+  // Hotkey groups derived from Remix save (raw.saved_keys / raw.saved_disappear)
+  // Keep it loosely typed for compatibility across different exports.
+  hotkeyGroups: any[] = [];
+  availableHotkeys: Set<string> = new Set();
+
+
+  spriteDrawableByIndex = new Map<number, any>();
+  nodes: RuntimeNode[] = [];
+  nodeBySpriteId = new Map<any, RuntimeNode>();
+  roots: RuntimeNode[] = [];
+
+  constructor(model: any) { this.model = model; }
+}
+
+// ============================================================================
+// 按需解码 + LRU 贴图回收
+// ============================================================================
+
+type TextureCacheRecord = {
+  promise: Promise<any>;
+  drawable: any | null;
+};
+
+type TextureLruEntry = {
+  bytes: number;
+  lastUsed: number;
+  indices: Set<number>;
+  cacheKeys: Set<string>;
+};
+
+class SpriteTextureManager {
+  private scene: RuntimeScene;
+  private spriteBytesByIndex: (Uint8Array | null)[];
+  private spriteHeaderSizeByIndex: ({ w: number; h: number } | null)[];
+  private spriteAnimatedByIndex: boolean[];
+  private decodePolicy: TextureDecodePolicy | null;
+
+  private maxItems: number;
+  private maxBytes: number;
+
+  private decodedCache = new Map<string, TextureCacheRecord>();
+
+  private inFlightByIndex = new Map<number, Promise<void>>();
+  private lastRequestMsByIndex = new Map<number, number>();
+
+  private queue: RuntimeNode[] = [];
+  private active = 0;
+
+  private lruByDrawable = new Map<any, TextureLruEntry>();
+  private totalBytes = 0;
+
+  // 当前帧正在使用的 drawable 集合（用于可见性保护）
+  private usedThisFrame = new Set<any>();
+  // 上一帧使用的 drawable 集合（帧间异步 trim 时的保护依据）
+  private lastFrameUsed = new Set<any>();
+  private disposed = false;
+
+  constructor(
+    scene: RuntimeScene,
+    spriteBytesByIndex: (Uint8Array | null)[],
+    decodePolicy: TextureDecodePolicy | null,
+    opts?: { maxItems?: number; maxBytes?: number },
+  ) {
+    this.scene = scene;
+    this.spriteBytesByIndex = spriteBytesByIndex;
+    this.decodePolicy = decodePolicy;
+
+    this.maxItems = Math.max(16, Math.floor(opts?.maxItems ?? TEXTURE_LRU_MAX_ITEMS_DEFAULT));
+
+    // 默认预算：跟随当decodePolicy.maxDim（已manifest.texture_downsample_start_dim 对齐）
+    // maxDim<=0（例Mod 显式不封顶），则 defaultMaxBytes=0，最终由下方 16MB 下限兜底
+    const dimHint = Math.max(0, Math.floor(Number(this.decodePolicy?.maxDim ?? 0) || 0));
+    const defaultMaxBytes = this.maxItems * dimHint * dimHint * 4;
+    this.maxBytes = Math.max(16 * 1024 * 1024, Math.floor(opts?.maxBytes ?? defaultMaxBytes));
+
+    // 预解析头部尺动图标记，保证未解码时也能算 clip/逻辑尺寸
+    this.spriteHeaderSizeByIndex = new Array(spriteBytesByIndex.length).fill(null);
+    this.spriteAnimatedByIndex = new Array(spriteBytesByIndex.length).fill(false);
+    for (let i = 0; i < spriteBytesByIndex.length; i++) {
+      const b = spriteBytesByIndex[i];
+      if (!(b instanceof Uint8Array) || b.length < 6) continue;
+      const isGif = isGifBytes(b);
+      const isPng = isPngBytes(b);
+      const isApng = isPng && pngHasChunk(b, "acTL");
+      const isAnimated = isGif || isApng;
+      this.spriteAnimatedByIndex[i] = isAnimated;
+      this.spriteHeaderSizeByIndex[i] = isPng ? tryReadPngSize(b) : isGif ? tryReadGifSize(b) : null;
+      if (isAnimated) this.scene.hasAnimatedTextures = true;
+    }
+  }
+
+  dispose(): void {
+    if (this.disposed) return;
+    this.disposed = true;
+    // 清理缓存引用，确LRU 回收/GC 生效
+    this.queue.length = 0;
+    this.decodedCache.clear();
+    this.inFlightByIndex.clear();
+    this.lastRequestMsByIndex.clear();
+
+    // 尽量释放 ImageBitmap
+    for (const drawable of this.lruByDrawable.keys()) {
+      this.scene.onDrawableReleased?.(drawable);
+      if (drawable instanceof ImageBitmap) {
+        try { drawable.close(); } catch { /* ignore */ }
+      }
+    }
+
+    this.lruByDrawable.clear();
+    this.usedThisFrame.clear();
+    this.totalBytes = 0;
+    this.active = 0;
+    this.spriteBytesByIndex = [];
+    this.spriteHeaderSizeByIndex = [];
+    this.spriteAnimatedByIndex = [];
+  }
+
+  getNodeLogicalSize(node: RuntimeNode): { w: number; h: number } {
+    const base = this.spriteHeaderSizeByIndex[node.index] || { w: 0, h: 0 };
+    let w = base.w;
+    let h = base.h;
+    if (!this.spriteAnimatedByIndex[node.index]) {
+      const rot = ((Math.floor(Number(node.raw?.rotated) || 0) % 4) + 4) % 4;
+      if (rot % 2 === 1) {
+        const t = w; w = h; h = t;
+      }
+    }
+    return { w, h };
+  }
+
+  request(node: RuntimeNode): void {
+    if (this.disposed) return;
+    if (!node) return;
+    if (this.scene.spriteDrawableByIndex.has(node.index)) return;
+    if (this.inFlightByIndex.has(node.index)) return;
+
+    const now = performance.now();
+    const last = this.lastRequestMsByIndex.get(node.index) || 0;
+    if (last && now - last < TEXTURE_STREAM_REQUEST_COOLDOWN_MS) return;
+    this.lastRequestMsByIndex.set(node.index, now);
+
+    this.queue.push(node);
+    this.pump();
+  }
+
+  touchDrawable(drawable: any): void {
+    if (this.disposed) return;
+    const e = this.lruByDrawable.get(drawable);
+    if (e) e.lastUsed = performance.now();
+    this.usedThisFrame.add(drawable);
+  }
+
+  /** 标记一帧开始，将上一帧的使用集合保存到 lastFrameUsed，再清空当前帧集合 */
+  beginFrame(): void {
+    if (this.disposed) return;
+    // 保留上一帧的使用记录，供帧间异步 trim 使用
+    const tmp = this.lastFrameUsed;
+    this.lastFrameUsed = this.usedThisFrame;
+    this.usedThisFrame = tmp;
+    this.usedThisFrame.clear();
+  }
+
+  trim(): void {
+    if (this.disposed) return;
+    // 若超预算，回收最久未使用资源
+    const overItems = this.lruByDrawable.size > this.maxItems;
+    const overBytes = this.totalBytes > this.maxBytes;
+    if (!overItems && !overBytes) return;
+
+    const targetBytes = Math.floor(this.maxBytes * TEXTURE_LRU_TRIM_GUARD_RATIO);
+
+    // 合并当前帧与上一帧的使用集合——确保帧间异步 trim 也能识别正在显示的贴图
+    const inUseSet = new Set<any>(this.usedThisFrame);
+    for (const d of this.lastFrameUsed) inUseSet.add(d);
+
+    while ((this.lruByDrawable.size > this.maxItems) || (this.totalBytes > this.maxBytes)) {
+      let victim: any = null;
+      let victimEntry: TextureLruEntry | null = null;
+      let bestTs = Infinity;
+
+      // 仅从当前帧未使用的贴图中选择回收目标（硬保护：绝不淘汰正在显示的贴图）
+      for (const [d, e] of this.lruByDrawable.entries()) {
+        if (inUseSet.has(d)) continue;
+        if (e.lastUsed < bestTs) {
+          bestTs = e.lastUsed;
+          victim = d;
+          victimEntry = e;
+        }
+      }
+
+      // 所有贴图都在使用 → 无法安全回收，放弃 trim（宁可暂时超预算也不闪烁）
+      if (!victim || !victimEntry) break;
+
+      // 从所有 index 解绑
+      for (const idx of victimEntry.indices) {
+        const cur = this.scene.spriteDrawableByIndex.get(idx);
+        if (cur === victim) this.scene.spriteDrawableByIndex.delete(idx);
+      }
+
+      // 清理去重缓存 key（否则 Map 会一直强引用 drawable，LRU 失效）
+      for (const k of victimEntry.cacheKeys) this.decodedCache.delete(k);
+
+      // 释放像素资源
+      this.scene.onDrawableReleased?.(victim);
+      if (victim instanceof ImageBitmap) {
+        try { victim.close(); } catch { /* ignore */ }
+      }
+
+      this.totalBytes -= victimEntry.bytes;
+      this.lruByDrawable.delete(victim);
+
+      // 若已经明显低于目标，提前停止
+      if (this.totalBytes <= targetBytes && this.lruByDrawable.size <= this.maxItems) break;
+    }
+  }
+
+  private pump(): void {
+    if (this.disposed) return;
+    while (this.active < TEXTURE_STREAM_DECODE_CONCURRENCY && this.queue.length > 0) {
+      const node = this.queue.shift()!;
+      this.active++;
+      const p = this.ensureNodeDecoded(node)
+        .catch(() => { /* ignore */ })
+        .finally(() => {
+          this.active = Math.max(0, this.active - 1);
+          this.inFlightByIndex.delete(node.index);
+          if (this.disposed) return;
+          this.trim();
+          // 继续消费队列
+          if (this.queue.length > 0) this.pump();
+        });
+      this.inFlightByIndex.set(node.index, p);
+    }
+  }
+
+  private async ensureNodeDecoded(node: RuntimeNode): Promise<void> {
+    if (this.disposed) return;
+    const idx = node.index;
+    const bytes = this.spriteBytesByIndex[idx];
+    if (!(bytes instanceof Uint8Array) || bytes.length < 6) return;
+
+    const isAnimated = !!this.spriteAnimatedByIndex[idx];
+
+    let drawable: any = null;
+
+    if (!isAnimated) {
+      const key = await getBytesHashKey(bytes);
+      if (this.disposed) return;
+
+      let rec = this.decodedCache.get(key);
+      if (!rec) {
+        const promise = decodePngBytesToDrawable(bytes, node.name, this.decodePolicy);
+        rec = { promise, drawable: null };
+        this.decodedCache.set(key, rec);
+        promise.then((d) => { rec!.drawable = d; }).catch(() => { /* ignore */ });
+      }
+
+      const base = await rec.promise;
+      if (!base) return;
+      if (this.disposed) {
+        if (base instanceof ImageBitmap) {
+          try { base.close(); } catch { /* ignore */ }
+        }
+        return;
+      }
+
+      node._texXform = getSpriteTextureTransform(node.raw, true);
+      drawable = base;
+
+      // base drawable 也要纳入 LRU（否decodedCache 会长期强引用导致无法回收
+      this.registerDrawable(base, -1);
+      this.touchDrawable(base);
+      this.attachCacheKey(base, key);
+
+      // 先写index->drawable，再纳入 LRU key 追踪
+      if (drawable) {
+        this.scene.spriteDrawableByIndex.set(idx, drawable);
+        this.registerDrawable(drawable, idx);
+        this.touchDrawable(drawable);
+      }
+      return;
+
+
+    } else {
+      drawable = await decodePngBytesToDrawable(bytes, node.name, this.decodePolicy);
+      if (!drawable) return;
+      if (this.disposed) {
+        if (drawable instanceof ImageBitmap) {
+          try { drawable.close(); } catch { /* ignore */ }
+        }
+        return;
+      }
+
+      node._texXform = getSpriteTextureTransform(node.raw, false);
+    }
+
+    if (this.disposed) {
+      if (drawable instanceof ImageBitmap) {
+        try { drawable.close(); } catch { /* ignore */ }
+      }
+      return;
+    }
+    if (!drawable) return;
+    this.scene.spriteDrawableByIndex.set(idx, drawable);
+    this.registerDrawable(drawable, idx);
+    this.touchDrawable(drawable);
+  }
+
+  private attachCacheKey(drawable: any, key: string): void {
+    if (this.disposed) return;
+    const e = this.lruByDrawable.get(drawable);
+    if (!e) return;
+    e.cacheKeys.add(key);
+  }
+
+  private registerDrawable(drawable: any, idx: number): void {
+    if (this.disposed) return;
+    const now = performance.now();
+    let e = this.lruByDrawable.get(drawable);
+    if (!e) {
+      const sz = getImageSize(drawable);
+      const bytes = Math.max(0, Math.floor((sz.w || 0) * (sz.h || 0) * 4));
+      e = {
+        bytes,
+        lastUsed: now,
+        indices: new Set<number>(),
+        cacheKeys: new Set<string>(),
+      };
+      this.lruByDrawable.set(drawable, e);
+      this.totalBytes += bytes;
+    }
+    e.indices.add(idx);
+  }
+}
+
+
+// ============================================================================
+// Deep clone / state machine
+// ============================================================================
+
+
+function deepClone(v: any): any {
+  if (v === null || v === undefined) return v;
+  if (Array.isArray(v)) return v.map(deepClone);
+  if (v instanceof Uint8Array) return new Uint8Array(v);
+  if (typeof v === "object") { const o: any = {}; for (const k of Object.keys(v)) o[k] = deepClone(v[k]); return o; }
+  return v;
+}
+
+function cloneStateDefaults(): any {
+  return deepClone((globalThis as any).ModelNormalizer?.STATE_DEFAULTS || {});
+}
+
+function applyStatePatchInPlace(state: any, patch: any) {
+  if (!state || !patch) return state;
+  for (const k of Object.keys(patch)) state[k] = deepClone(patch[k]);
+  return state;
+}
+
+function materializeNodeState(node: RuntimeNode, id: number) {
+  if (node.materializedStates[id]) { node.runtimeState = node.materializedStates[id]; return; }
+  const patch = node.savedStatePatches[id] ?? null;
+  const next = deepClone(node.runtimeState || cloneStateDefaults());
+  if (patch) applyStatePatchInPlace(next, patch);
+  node.materializedStates[id] = next;
+  node.runtimeState = next;
+}
+
+function resetNodeAnimation(node: RuntimeNode, st: any) {
+  node.runtimeFrame = 0; node.runtimeFrameOverride = null; node._frameAcc = 0;
+}
+
+function materializeSceneState(scene: RuntimeScene, targetStateId: number) {
+  const count = Math.max(1, Math.floor(Number(scene.model?.stateCount) || 1));
+  const id = clamp(Math.floor(targetStateId || 0), 0, count - 1);
+  for (const n of scene.nodes) materializeNodeState(n, id);
+  scene.stateId = id;
+  for (const n of scene.nodes) {
+    const st = n.getState(scene.stateId);
+    if (st?.should_reset_state) resetNodeAnimation(n, st);
+  }
+}
+
+function initNodeStateMachine(scene: RuntimeScene) {
+  const count = Math.max(1, Math.floor(Number(scene.model?.stateCount) || 1));
+  for (const n of scene.nodes) {
+    n.savedStatePatches = Array.isArray(n.raw?.states) ? n.raw.states : new Array(count);
+    n.materializedStates = new Array(count);
+    n.runtimeState = cloneStateDefaults();
+  }
+  materializeSceneState(scene, 0);
+}
+
+
+// ============================================================================
+// Node paths / hierarchy
+// ============================================================================
+
+function idPartForNode(node: RuntimeNode) {
+  return node.spriteId !== null && node.spriteId !== undefined ? `id${node.spriteId}` : `i${node.index}`;
+}
+
+function assignNodePaths(scene: RuntimeScene) {
+  function walk(node: RuntimeNode, parent: RuntimeNode | null) {
+    const idPart = idPartForNode(node);
+    node.pathIds = parent ? `${parent.pathIds}/${idPart}` : idPart;
+    node.path = parent ? `${parent.path}/${node.name || idPart}` : (node.name || idPart);
+    node.key = node.pathIds;
+    for (const c of node.children) walk(c, node);
+  }
+  for (const r of scene.roots) walk(r, null);
+}
+
+// ============================================================================
+// Mouth helpers
+// ============================================================================
+
+function getMouthKeyForState(scene: RuntimeScene, st: any, baseKey: string): string {
+  if (!st || !baseKey || st.shared_movement) return baseKey;
+  const mouth = Math.floor(Number(scene.mouthState ?? 0));
+  const prefix = mouth === 1 ? "mo_" : mouth === 2 ? "scream_" : "";
+  if (prefix) { const k = `${prefix}${baseKey}`; if (k in st) return k; }
+  return baseKey;
+}
+function getMouthNumber(scene: RuntimeScene, st: any, baseKey: string, fallback = 0): number {
+  const n = Number(st?.[getMouthKeyForState(scene, st, baseKey)]);
+  return Number.isFinite(n) ? n : fallback;
+}
+
+/**
+ * 读取数值参数（支持别名键）。
+ * 用于兼容部分模型文件里使用 xFreq/yFreq，而本项目历史实现使用 xFrq/yFrq。
+ */
+function getMouthNumberWithAlias(
+  scene: RuntimeScene,
+  st: any,
+  primaryKey: string,
+  aliasKey: string,
+  fallback = 0,
+): number {
+  const v1 = getMouthNumber(scene, st, primaryKey, Number.NaN);
+  if (Number.isFinite(v1)) return v1;
+  return getMouthNumber(scene, st, aliasKey, fallback);
+}
+
+function getMouthBool(scene: RuntimeScene, st: any, baseKey: string, fallback = false): boolean {
+  const v = st?.[getMouthKeyForState(scene, st, baseKey)];
+  if (typeof v === "boolean") return v;
+  if (v === 0 || v === 1) return !!v;
+  return fallback;
+}
+
+/**
+ * 频率兼容：Remix 导出里 frq 有两种常见量纲。
+ * - “每 tick（60Hz）”：值通常很小，例如 0.02。
+ * - “每秒”：值会显著更大，例如 2~5。
+ *
+ * 本播放器的 `scene.tick` 使用 60Hz tick，因此这里把“明显偏大”的 frq 视为“每秒”并换算成每 tick。
+ */
+function normalizePngRemixFrq(frqRaw: number): number {
+  const frq = Number(frqRaw);
+  if (!Number.isFinite(frq)) return 0;
+  const abs = Math.abs(frq);
+  // 启发式阈值：>0.5 基本不可能是每 tick（会快到离谱），更像是“每秒”。
+  return abs > 0.5 ? (frq / 60) : frq;
+}
+
+// ============================================================================
+// Hotkey helpers (saved_keys / saved_disappear)
+// ============================================================================
+
+function normalizeKeyName(key: any): string {
+  const s = String(key || "").trim().toUpperCase();
+  if (!s) return "";
+
+  // Accept F1..F12
+  const m = /^F(\d{1,2})$/.exec(s);
+  if (m) {
+    const n = Number(m[1]);
+    if (Number.isFinite(n) && n >= 1 && n <= 12) return `F${n}`;
+  }
+
+  // Common variants
+  if (s.startsWith("KEY_")) return normalizeKeyName(s.slice(4));
+  return s;
+}
+
+function normalizeSavedDisappearEvent(ev: any): { hotkey: string; label: string } {
+  if (!ev) return { hotkey: "", label: "" };
+
+  // Some exports use plain strings like "F2"
+  if (typeof ev === "string") {
+    const k = normalizeKeyName(ev);
+    return { hotkey: k, label: k || ev };
+  }
+
+  // Numbers might be keycode
+  if (typeof ev === "number") {
+    // Godot F1..F12 keycodes are not guaranteed here, so keep as label.
+    return { hotkey: "", label: String(ev) };
+  }
+
+  // Object: try best-effort map to F1..F12 (matches preview tool behavior)
+  if (typeof ev === "object") {
+    const keycode = Number((ev as any).keycode ?? (ev as any).physical_keycode ?? (ev as any).physicalKeycode ?? NaN);
+    if (Number.isFinite(keycode)) {
+      // Godot 4: F1..F12 often map around 112..123 (browser-like). Best-effort.
+      if (keycode >= 112 && keycode <= 123) {
+        const k = `F${keycode - 111}`;
+        return { hotkey: k, label: k };
+      }
+    }
+
+    const keyText = (ev as any).key ?? (ev as any).as_text ?? (ev as any).asText ?? (ev as any).text;
+    if (typeof keyText === "string") {
+      const k = normalizeKeyName(keyText);
+      return { hotkey: k, label: k || keyText };
+    }
+
+    return { hotkey: "", label: String((ev as any).type || "") };
+  }
+
+  return { hotkey: "", label: String(ev) };
+}
+
+function buildHotkeyGroups(scene: RuntimeScene) {
+  // Match preview tool semantics (other-tool/pngRemix预览):
+  // - `saved_keys` and `saved_disappear` are both treated as "hide on key".
+  // - When hotkey k is applied: visible = !savedKeys.has(k)
+  const groupsByParent = new Map<any, {
+    parentId: any;
+    nodes: Array<{ node: RuntimeNode; savedKeys: Set<string> }>;
+  }>();
+  const available = new Set<string>();
+
+  for (const n of scene.nodes) {
+    const raw = n.raw || {};
+    if (raw.is_asset !== true) continue;
+
+    const saved = Array.isArray((raw as any).saved_keys) ? (raw as any).saved_keys : [];
+    const keysFromSavedKeys = saved
+      .map(normalizeKeyName)
+      .filter((x: string) => x.length > 0);
+
+    const disappear = Array.isArray((raw as any).saved_disappear) ? (raw as any).saved_disappear : [];
+    const keysFromDisappear: string[] = [];
+    for (const ev of disappear) {
+      const { hotkey } = normalizeSavedDisappearEvent(ev);
+      if (hotkey) keysFromDisappear.push(hotkey);
+    }
+
+    const savedKeys = new Set<string>([...keysFromSavedKeys, ...keysFromDisappear]);
+    if (savedKeys.size === 0) continue;
+
+    const pid = n.parentId ?? null;
+    if (!groupsByParent.has(pid)) {
+      groupsByParent.set(pid, { parentId: pid, nodes: [] });
+    }
+
+    const g = groupsByParent.get(pid)!;
+    g.nodes.push({ node: n, savedKeys });
+
+    for (const k of savedKeys) available.add(k);
+  }
+
+  scene.hotkeyGroups = Array.from(groupsByParent.values());
+  scene.availableHotkeys = available;
+}
+
+
+
+// ============================================================================
+// Blink system
+// ============================================================================
+
+
+function getBlinkSpeedSeconds(features: PngRemixConfig["features"]): number {
+  const s = Number(features?.blink_speed); return Number.isFinite(s) && s > 0 ? s : 1;
+}
+function getBlinkChance(features: PngRemixConfig["features"]): number {
+  const c = Number(features?.blink_chance); return Number.isFinite(c) && c >= 1 ? Math.floor(c) : 10;
+}
+function getBlinkHoldSeconds(features: PngRemixConfig["features"]): number {
+  return (features?.blink_hold_ratio ?? 0.2) * getBlinkSpeedSeconds(features);
+}
+
+// ============================================================================
+// computeSceneBaseWorldPositions
+// ============================================================================
+
+function computeSceneBaseWorldPositions(scene: RuntimeScene) {
+  function visit(node: RuntimeNode, parentMat: Mat2D) {
+    const st = node.getState(scene.stateId); if (!st) return;
+    const pos = st.position || { x: 0, y: 0 };
+    const offset = st.offset || { x: 0, y: 0 };
+    const scale = st.scale || { x: 1, y: 1 };
+    const rotation = Number(st.rotation) || 0;
+    let baseMat = parentMat
+      .multiply(Mat2D.translate(Number(pos.x) || 0, Number(pos.y) || 0))
+      .multiply(Mat2D.rotate(rotation))
+      .multiply(Mat2D.scale(Number(scale.x) || 1, Number(scale.y) || 1));
+    let spriteMat = baseMat.multiply(Mat2D.translate(Number(offset.x) || 0, Number(offset.y) || 0));
+    if (st.flip_sprite_h || st.flip_sprite_v)
+      spriteMat = spriteMat.multiply(Mat2D.scale(st.flip_sprite_h ? -1 : 1, st.flip_sprite_v ? -1 : 1));
+    const p = spriteMat.applyToPoint(0, 0);
+    node.baseWorldPos.x = p.x; node.baseWorldPos.y = p.y;
+    for (const c of node.children) visit(c, spriteMat);
+  }
+  for (const r of scene.roots) visit(r, Mat2D.identity());
+}
+
+// ============================================================================
+// stepNodeRuntime 单节点每帧更
+// ============================================================================
+
+/**
+ * 单节点的每帧更新：推进帧动画、鼠标跟随、彩摆动/移动等组合效果
+ *
+ * 注意：该函数会同时更runtimeFrame 与跟移动的缓冲状态，
+ * PngRemix 动画效果的核心路径
+ */
+function stepNodeRuntime(scene: RuntimeScene, node: RuntimeNode, dtSec: number, enableMouseFollow: boolean, mouseWorld: Vec2, hasMouse: boolean, followAmpScale: number, motionAmpScale: number, motionFrqScale: number) {
+
+  const st = node.getState(scene.stateId); if (!st) return;
+
+  const shouldDelta = scene.model?.settings?.should_delta !== false;
+  const smoothing = 1 - Math.pow(1 - 0.05, dtSec * 60);
+
+  // PngRemix：缩放参数
+  // - follow：只影响鼠标跟随幅度（pos/rot/scale/animate_to_mouse 的范围）
+  // - motion_amp：只影响摆动幅度（xAmp/yAmp、wiggle_amp、stretchAmount、rdragStr 等）
+  // - motion_frq：只影响摆动频率（xFrq/yFrq、wiggle_freq、rot_frq 等）
+  const followScale = Number.isFinite(followAmpScale) ? clamp(followAmpScale, 0, 2) : 1;
+  const motionAmp = Number.isFinite(motionAmpScale) ? clamp(motionAmpScale, 0, 2) : 1;
+  const motionFrq = Number.isFinite(motionFrqScale) ? clamp(motionFrqScale, 0, 2) : 1;
+
+
+  // --- Sprite sheet animation ---
+  const hf = Math.max(1, Math.floor(Number(st.hframes) || 1));
+  const vf = Math.max(1, Math.floor(Number(st.vframes) || 1));
+  const total = hf * vf;
+
+  if (st.non_animated_sheet || total <= 1 || st.advanced_lipsync) {
+    node.runtimeFrame = null; node._frameAcc = 0;
+  } else {
+    const speed = Math.max(0, Number(st.animation_speed) || 0);
+    if (node.runtimeFrame === null || node.runtimeFrame === undefined) node.runtimeFrame = Math.floor(Number(st.frame) || 0);
+    if (speed > 0) {
+      node._frameAcc += dtSec * speed;
+      const steps = Math.floor(node._frameAcc);
+      if (steps > 0) {
+        node._frameAcc -= steps;
+        const cur = Math.floor(node.runtimeFrame || 0);
+        node.runtimeFrame = st.one_shot ? Math.min(total - 1, cur + steps) : ((cur + steps) % total + total) % total;
+      }
+    }
+  }
+
+  // --- animate_to_mouse ---
+  node.runtimeFrameOverride = null;
+  if (enableMouseFollow && st.non_animated_sheet && st.animate_to_mouse && total > 1) {
+    const base = node.baseWorldPos;
+    const mx = mouseWorld.x - base.x, my = mouseWorld.y - base.y;
+    const dist = Math.hypot(mx, my);
+    const dirx = dist > 1e-6 ? mx / dist : 0, diry = dist > 1e-6 ? my / dist : 0;
+    const rangeX = Math.max(0, getMouthNumber(scene, st, "look_at_mouse_pos", 0)) * followScale;
+    const rangeY = Math.max(0, getMouthNumber(scene, st, "look_at_mouse_pos_y", 0)) * followScale;
+
+    if (rangeX > 1e-6 && rangeY > 1e-6) {
+      const distX = dirx * Math.min(dist, rangeX), distY = diry * Math.min(dist, rangeY);
+      const normX = distX / (2 * rangeX) + 0.5, normY = distY / (2 * rangeY) + 0.5;
+      const frameX = clamp(Math.floor(normX * hf), 0, hf - 1);
+      const frameY = clamp(Math.floor(normY * vf), 0, vf - 1);
+      const speed2 = Math.max(0, Number(st.animate_to_mouse_speed) || 0);
+      const step = speed2 * (shouldDelta ? dtSec * 60 : 1);
+      node._follow.frameH = moveToward(node._follow.frameH, frameX, step);
+      node._follow.frameV = moveToward(node._follow.frameV, frameY, step);
+      node.runtimeFrameOverride = Math.floor(node._follow.frameV) * hf + Math.floor(node._follow.frameH);
+    }
+  }
+
+  // --- Wiggle ---
+  if (st.wiggle) {
+    const wf = normalizePngRemixFrq((Number(st.wiggle_freq) || 0)) * motionFrq;
+    const target = Math.sin((scene.tick || 0) * wf) * toRad((Number(st.wiggle_amp) || 0) * motionAmp);
+    node.runtimeWiggleRotation = lerp(node.runtimeWiggleRotation, target, smoothing);
+  } else { node.runtimeWiggleRotation = lerp(node.runtimeWiggleRotation, 0, smoothing); }
+  if (st.follow_parent_effects) {
+    const parent = scene.nodeBySpriteId.get(node.parentId);
+    if (parent) node.runtimeWiggleRotation = parent.runtimeWiggleRotation || 0;
+  }
+
+  // --- Rainbow ---
+  if (st.rainbow) {
+    if (!Number.isFinite(node._rainbowHue)) {
+      const base = st.tint || { r: 1, g: 1, b: 1 };
+      node._rainbowHue = rgbToHsv(base.r ?? 1, base.g ?? 1, base.b ?? 1).h;
+    }
+    node._rainbowHue = wrap01(node._rainbowHue + (Number(st.rainbow_speed) || 0) * dtSec);
+  } else { node._rainbowHue = Number.NaN; }
+
+  // --- Follow type / rotation / scale ---
+  const followType = Math.floor(getMouthNumber(scene, st, "follow_type", 15));
+  const followType2 = Math.floor(getMouthNumber(scene, st, "follow_type2", 15));
+  const followType3 = Math.floor(getMouthNumber(scene, st, "follow_type3", 15));
+  const mouseDelayRaw = clamp(getMouthNumber(scene, st, "mouse_delay", 0.1), 0, 1);
+
+  // Godot/PngRemix 的跟随逻辑默认是按 60Hz tick 重复执行 lerp(x, target, mouse_delay)
+  // 如果我们只在低帧率下每帧执行一次，视觉上会变慢（例20fps 会慢3 倍）
+  // 这里把每dt 合成为等价的 lerp 系数：tEff = 1 - (1 - t)^(dt*60)
+  // 这样无论 render fps 如何变化，跟随速度都能60Hz tick 保持一致
+  const followTicks = shouldDelta ? Math.max(0, dtSec) * 60 : 1;
+  const tEff = clamp(1 - Math.pow(1 - mouseDelayRaw, followTicks), 0, 1);
+  const tPos = tEff;
+  const tRs = tEff;
+
+  const base = node.baseWorldPos;
+  const mouseCoords = (enableMouseFollow && hasMouse) ? { x: mouseWorld.x - base.x, y: mouseWorld.y - base.y } : { x: 0, y: 0 };
+  const mouseDist = Math.hypot(mouseCoords.x, mouseCoords.y);
+  const mouseDir = mouseDist > 1e-6 ? { x: mouseCoords.x / mouseDist, y: mouseCoords.y / mouseDist } : { x: 0, y: 0 };
+
+  // follow_mouse_velocity
+  if (enableMouseFollow && hasMouse && getMouthBool(scene, st, "follow_mouse_velocity", false)) {
+    const last = node._follow.lastMouseCoords;
+    const md = { x: last.x - mouseCoords.x, y: last.y - mouseCoords.y };
+    if (Math.abs(md.x) > 1e-6 || Math.abs(md.y) > 1e-6) {
+      node._follow.lastMouseCoords = { x: mouseCoords.x, y: mouseCoords.y };
+    }
+    const dv = { x: Math.tanh(md.x), y: Math.tanh(md.y) };
+    const dirVelX = -Math.sign(md.x), dirVelY = -Math.sign(md.y);
+    const lenV = Math.hypot(dv.x, dv.y);
+    const lookX = getMouthNumber(scene, st, "look_at_mouse_pos", 0) * followScale;
+    const lookY = getMouthNumber(scene, st, "look_at_mouse_pos_y", 0) * followScale;
+    node._follow.lastDist.x = lerp(node._follow.lastDist.x, dirVelX * lenV * lookX, 0.5);
+    node._follow.lastDist.y = lerp(node._follow.lastDist.y, dirVelY * lenV * lookY, 0.5);
+    node._follow.dirVelAnimX = md.x; node._follow.dirVelAnimY = md.y;
+  }
+
+  // Helper: followPositionCalculations
+  // 注意：这里不要再targetPos 做一lerp
+  // 因为后面 runtimeFollowPos 还会 lerp(targetPos)，对"移动目标"会形成二阶低通，体感更黏、更滞后
+  // 直接计算目标位置（targetPos），只保runtimeFollowPos 的一次平滑即可
+  function followPositionCalculations(dir: Vec2, mDist: Vec2 | null) {
+    const posXMin = getMouthNumber(scene, st, "pos_x_min", 0) * followScale;
+    const posXMax = getMouthNumber(scene, st, "pos_x_max", 0) * followScale;
+    const posYMin = getMouthNumber(scene, st, "pos_y_min", 0) * followScale;
+    const posYMax = getMouthNumber(scene, st, "pos_y_max", 0) * followScale;
+
+
+    const snap = !!st.snap_pos;
+
+    let tx = 0;
+    let ty = 0;
+
+    if (mDist && (mDist.x !== 0 || mDist.y !== 0)) {
+      tx = clamp(dir.x * mDist.x, posXMin, posXMax);
+      ty = clamp(dir.y * mDist.y, posYMin, posYMax);
+    } else {
+      const posNormX = clamp(dir.x, -1, 1), posNormY = clamp(dir.y, -1, 1);
+      const fx = Math.max(0.001, posNormX * 0.5 + 0.5), fy = Math.max(0.001, posNormY * 0.5 + 0.5);
+      tx = lerp(posXMin, posXMax, fx);
+      ty = lerp(posYMin, posYMax, fy);
+    }
+
+    if (snap) {
+      if (dir.x !== 0) { node._follow.targetPos.x = tx; node._follow.currentDir.x = dir.x; }
+      if (dir.y !== 0) { node._follow.targetPos.y = ty; node._follow.currentDir.y = dir.y; }
+    } else {
+      node._follow.targetPos.x = tx;
+      node._follow.targetPos.y = ty;
+      node._follow.currentDir.x = dir.x; node._follow.currentDir.y = dir.y;
+    }
+
+    node._follow.currentDist = Math.hypot(node._follow.targetPos.x, node._follow.targetPos.y);
+  }
+
+  // --- position ---
+  if (followType === 15) {
+    node._follow.targetPos.x = 0; node._follow.targetPos.y = 0;
+    node.runtimeFollowPos.x = lerp(node.runtimeFollowPos.x, 0, tPos);
+    node.runtimeFollowPos.y = lerp(node.runtimeFollowPos.y, 0, tPos);
+  } else {
+    if (followType === 0) {
+      if (enableMouseFollow && hasMouse) {
+        if (getMouthBool(scene, st, "follow_mouse_velocity", false))
+          followPositionCalculations(mouseDir, node._follow.lastDist);
+        else followPositionCalculations(mouseDir, { x: mouseDist, y: mouseDist });
+      } else {
+        node._follow.targetPos.x = lerp(node._follow.targetPos.x, 0, tPos);
+        node._follow.targetPos.y = lerp(node._follow.targetPos.y, 0, tPos);
+      }
+    }
+    if (st.animate_to_mouse && st.non_animated_sheet && !st.animate_to_mouse_track_pos) {
+      node.runtimeFollowPos.x = lerp(node.runtimeFollowPos.x, 0, tPos);
+      node.runtimeFollowPos.y = lerp(node.runtimeFollowPos.y, 0, tPos);
+    } else {
+      const invertX = getMouthBool(scene, st, "pos_invert_x", false);
+      const invertY = getMouthBool(scene, st, "pos_invert_y", false);
+      node.runtimeFollowPos.x = lerp(node.runtimeFollowPos.x, invertX ? -node._follow.targetPos.x : node._follow.targetPos.x, tPos);
+      node.runtimeFollowPos.y = lerp(node.runtimeFollowPos.y, invertY ? -node._follow.targetPos.y : node._follow.targetPos.y, tPos);
+    }
+  }
+
+  // --- rotation ---
+  if (followType2 === 15) {
+    node.runtimeFollowRot = lerpAngle(node.runtimeFollowRot, 0, tRs);
+  } else {
+    const toRadMaybe = (v: number) => { const n = Number(v) || 0; return Math.abs(n) > 6.5 ? toRad(n) : n; };
+    function followControllerRotation(axis: Vec2) {
+      const normalized = clamp(axis.x, -1, 1);
+      const rotMin = toRadMaybe(getMouthNumber(scene, st, "rot_min", 0)) * followScale;
+      const rotMax = toRadMaybe(getMouthNumber(scene, st, "rot_max", 0)) * followScale;
+
+      const safeMin = clamp(getMouthNumber(scene, st, "rLimitMin", -180), -360, 360);
+      const safeMax = clamp(getMouthNumber(scene, st, "rLimitMax", 180), -360, 360);
+      return clamp(lerp(rotMin, rotMax, Math.max((normalized + 1) / 2, 0.001)), toRad(safeMin), toRad(safeMax));
+    }
+    let targetRot = 0;
+    if (followType2 === 0) {
+      if (!enableMouseFollow || !hasMouse) targetRot = 0;
+      else if (getMouthBool(scene, st, "follow_mouse_velocity", false)) {
+        const vx = node._follow.dirVelAnimX || 0;
+        const normX = Math.abs(vx) > 1e-6 ? vx / Math.abs(vx) : 0;
+        const normalizedMouse = clamp(normX / 2, -1, 1);
+        const rotMin = toRadMaybe(getMouthNumber(scene, st, "rot_min", 0)) * followScale;
+        const rotMax = toRadMaybe(getMouthNumber(scene, st, "rot_max", 0)) * followScale;
+
+        const safeMin = clamp(getMouthNumber(scene, st, "rLimitMin", -180), -360, 360);
+        const safeMax = clamp(getMouthNumber(scene, st, "rLimitMax", 180), -360, 360);
+        targetRot = clamp(normalizedMouse * lerp(rotMin, rotMax, Math.max(0.01, normalizedMouse * 0.5)) * toRad(90), toRad(safeMin), toRad(safeMax));
+      } else {
+        targetRot = followControllerRotation({ x: mouseDir.x, y: 0 });
+      }
+    }
+    node.runtimeFollowRot = lerpAngle(node.runtimeFollowRot, targetRot, tRs);
+  }
+
+  // --- scale ---
+  if (followType3 === 15) {
+    node.runtimeFollowScale.x = lerp(node.runtimeFollowScale.x, 1, tRs);
+    node.runtimeFollowScale.y = lerp(node.runtimeFollowScale.y, 1, tRs);
+  } else {
+    const sMinX = getMouthNumber(scene, st, "scale_x_min", 0) * followScale, sMaxX = getMouthNumber(scene, st, "scale_x_max", 0) * followScale;
+    const sMinY = getMouthNumber(scene, st, "scale_y_min", 0) * followScale, sMaxY = getMouthNumber(scene, st, "scale_y_max", 0) * followScale;
+
+    let xVal = 0, yVal = 0;
+    if (followType3 === 0) {
+      if (!enableMouseFollow || !hasMouse) { xVal = 0; yVal = 0; }
+      else if (getMouthBool(scene, st, "follow_mouse_velocity", false)) {
+        const vx = node._follow.dirVelAnimX || 0;
+        const normX = Math.abs(vx) > 1e-6 ? vx / Math.abs(vx) : 0;
+        const nm = clamp(normX / 2, -1, 1);
+        xVal = lerp(sMinX, sMaxX, Math.max(0.01, nm / 2));
+        yVal = lerp(sMinY, sMaxY, Math.max(0.01, nm / 2));
+      } else {
+        xVal = clamp(mouseDir.x, sMinX, sMaxX); yVal = clamp(mouseDir.y, sMinY, sMaxY);
+      }
+    }
+    if (getMouthBool(scene, st, "scale_invert_x", false)) xVal *= -1;
+    if (getMouthBool(scene, st, "scale_invert_y", false)) yVal *= -1;
+    node.runtimeFollowScale.x = lerp(node.runtimeFollowScale.x, 1 - clamp(xVal, sMinX, sMaxX), tRs);
+    node.runtimeFollowScale.y = lerp(node.runtimeFollowScale.y, 1 - clamp(yVal, sMinY, sMaxY), tRs);
+  }
+
+  // --- movements ---
+  const xAmp = getMouthNumber(scene, st, "xAmp", 0) * motionAmp;
+
+  const xFrq = normalizePngRemixFrq(getMouthNumberWithAlias(scene, st, "xFrq", "xFreq", 0)) * motionFrq;
+  const yAmp = getMouthNumber(scene, st, "yAmp", 0) * motionAmp;
+
+  const yFrq = normalizePngRemixFrq(getMouthNumberWithAlias(scene, st, "yFrq", "yFreq", 0)) * motionFrq;
+  const dragSpeed = getMouthNumber(scene, st, "dragSpeed", 0);
+  const stretchAmount = getMouthNumber(scene, st, "stretchAmount", 0) * motionAmp;
+
+  const rdragStr = getMouthNumber(scene, st, "rdragStr", 0) * motionAmp;
+
+  const rotFrq = normalizePngRemixFrq(getMouthNumber(scene, st, "rot_frq", 0)) * motionFrq;
+  const rLimitMin = getMouthNumber(scene, st, "rLimitMin", -180);
+  const rLimitMax = getMouthNumber(scene, st, "rLimitMax", 180);
+
+
+  const dragSnap = getMouthNumber(scene, st, "drag_snap", 999999);
+  if (Number.isFinite(dragSnap) && dragSnap !== 999999) {
+    if (node._move.hasLastBaseWorldPos) {
+      const dd = Math.hypot(base.x - node._move.lastBaseWorldPos.x, base.y - node._move.lastBaseWorldPos.y);
+      if (dd > dragSnap) { node._move.shadow.x = 0; node._move.shadow.y = 0; node._move.prevShadow.x = 0; node._move.prevShadow.y = 0; }
+    }
+    node._move.lastBaseWorldPos.x = base.x; node._move.lastBaseWorldPos.y = base.y;
+    node._move.hasLastBaseWorldPos = true;
+  }
+
+  if (st.pause_movement) {
+    const ud = shouldDelta ? dtSec : 1 / 60;
+    node._move.pausedWobble.x += ud; node._move.pausedWobble.y += ud; node._move.pausedRot += ud;
+  }
+
+  const wobbleX = xAmp && xFrq ? Math.sin((scene.tick - node._move.pausedWobble.x) * xFrq) * xAmp : 0;
+  const wobbleY = yAmp && yFrq ? Math.sin((scene.tick - node._move.pausedWobble.y) * yFrq) * yAmp : 0;
+
+  // Auto rotation
+  node.runtimeAutoRot = 0;
+  if (getMouthBool(scene, st, "should_rotate", false)) {
+    const speed3 = getMouthNumber(scene, st, "should_rot_speed", 0);
+    node._move.shouldRot += speed3 * (shouldDelta ? dtSec * 60 : 1);
+    node.runtimeAutoRot = node._move.shouldRot;
+  } else { node._move.shouldRot = 0; }
+
+  const targetPos = { x: (node.runtimeFollowPos.x || 0) + wobbleX, y: (node.runtimeFollowPos.y || 0) + wobbleY };
+  node._move.prevShadow.x = node._move.shadow.x; node._move.prevShadow.y = node._move.shadow.y;
+
+  if (dragSpeed > 0) {
+    const tt = clamp(1 / dragSpeed, 0, 1);
+    node._move.shadow.x = lerp(node._move.shadow.x, targetPos.x, tt);
+    node._move.shadow.y = lerp(node._move.shadow.y, targetPos.y, tt);
+  } else {
+    node._move.shadow.x = lerp(node._move.shadow.x, targetPos.x, 0.85);
+    node._move.shadow.y = lerp(node._move.shadow.y, targetPos.y, 0.85);
+  }
+  node.runtimeMovePos.x = node._move.shadow.x; node.runtimeMovePos.y = node._move.shadow.y;
+
+  let length = (node._move.prevShadow.x - node._move.shadow.x) - (node._move.prevShadow.y - node._move.shadow.y);
+  if (st.physics !== false) {
+    const parent = scene.nodeBySpriteId.get(node.parentId);
+    if (parent?._move) length += (parent._move.prevShadow.x - parent._move.shadow.x) + (parent._move.prevShadow.y - parent._move.shadow.y);
+  }
+  if (!st.ignore_bounce) length -= scene.bounceChange || 0;
+
+  if (stretchAmount) {
+    const yvel = length * stretchAmount * 0.01 * 0.5;
+    node._move.scale.x = lerp(node._move.scale.x, 1 - yvel, 0.15);
+    node._move.scale.y = lerp(node._move.scale.y, 1 + yvel, 0.15);
+  } else {
+    node._move.scale.x = lerp(node._move.scale.x, 1, 0.15);
+    node._move.scale.y = lerp(node._move.scale.y, 1, 0.15);
+  }
+  node.runtimeMoveScale.x = node._move.scale.x; node.runtimeMoveScale.y = node._move.scale.y;
+
+  let rot = 0;
+  if (rotFrq && rdragStr) rot = Math.sin((scene.tick - node._move.pausedRot) * rotFrq) * toRad(rdragStr);
+  node._move.rot = lerpAngle(node._move.rot, rot, 0.15);
+  if (rdragStr) {
+    let yvel2 = clamp(length * rdragStr * 0.5, Math.min(rLimitMin, rLimitMax), Math.max(rLimitMin, rLimitMax));
+    node._move.rot = lerpAngle(node._move.rot, toRad(yvel2), 0.15);
+  }
+  node.runtimeMoveRot = node._move.rot;
+}
+
+// ============================================================================
+// stepSceneRuntime
+// ============================================================================
+
+function stepSceneRuntime(scene: RuntimeScene, dtSec: number, enableMouseFollow: boolean, mouseWorld: Vec2, hasMouse: boolean, followAmpScale: number, motionAmpScale: number, motionFrqScale: number) {
+  computeSceneBaseWorldPositions(scene);
+  function walk(n: RuntimeNode) {
+    stepNodeRuntime(scene, n, dtSec, enableMouseFollow, mouseWorld, hasMouse, followAmpScale, motionAmpScale, motionFrqScale);
+    for (const c of n.children) walk(c);
+  }
+  for (const r of scene.roots) walk(r);
+}
+
+
+// ============================================================================
+// updateGlobalBounce
+// ============================================================================
+
+function updateGlobalBounce(scene: RuntimeScene, dtSec: number, features: PngRemixConfig["features"], motionAmpScale: number, motionFrqScale: number) {
+  const settings = scene.model?.settings || {};
+  const enabled = !!(settings as any).bounce_state;
+
+  const motionAmp = Number.isFinite(motionAmpScale) ? clamp(motionAmpScale, 0, 2) : 1;
+  const motionFrq = Number.isFinite(motionFrqScale) ? clamp(motionFrqScale, 0, 2) : 1;
+
+  // 兼容字段别名：yFrq / yFreq
+  const yAmpV = enabled ? (Number((settings as any).yAmp) || 0) : 0;
+  const yFrqRaw = Number((settings as any).yFrq);
+  const yFreqRaw = Number((settings as any).yFreq);
+  const yFrqVRaw = enabled ? (Number.isFinite(yFrqRaw) ? yFrqRaw : (Number.isFinite(yFreqRaw) ? yFreqRaw : 0)) : 0;
+  const yFrqV = normalizePngRemixFrq(yFrqVRaw);
+
+
+  const targetY = yAmpV && yFrqV ? Math.sin(scene.tick * yFrqV * motionFrq) * yAmpV * motionAmp : 0;
+  const sm = 1 - Math.pow(1 - 0.08, dtSec * 60);
+  scene._bouncePosY = lerp(scene._bouncePosY, targetY, clamp(sm, 0, 1));
+
+  let clickY = 0;
+  if (features.click_bounce && scene._clickBounce.active) {
+    const cb = scene._clickBounce;
+    cb.t += Math.max(0, dtSec);
+    const dur = Math.max(0.05, cb.dur);
+    const p = clamp(cb.t / dur, 0, 1);
+    clickY = -Math.sin(p * Math.PI) * Math.max(0, cb.amp);
+    if (p >= 1) cb.active = false;
+  }
+
+  const bounceY = scene._bouncePosY + clickY;
+  scene.viewerJumpY = bounceY;
+  const hold = scene._lastBounceY || 0;
+  scene.bounceChange = hold - bounceY;
+  scene._lastBounceY = bounceY;
+}
+
+// ============================================================================
+// buildDrawList
+// ============================================================================
+
+type ClipRect = { mat: Mat2D; x: number; y: number; w: number; h: number };
+
+interface DrawItem {
+  order: number;
+  z: number;
+  mat: Mat2D;
+  clip: ClipRect[];
+  alpha: number;
+  tint: RGBA;
+  blend: PngRemixBlendMode;
+  drawable: any;
+  texXform: SpriteTextureTransform | null;
+  hf: number;
+  vf: number;
+  frame: number;
+}
+
+/**
+ * 构建可绘制列表：按树遍历计算可见性、颜色、变换与裁剪栈
+ *
+ * 输出DrawItem 会在后续排序并逐项渲染
+ */
+function buildDrawList(scene: RuntimeScene, rootSpriteMat: Mat2D): DrawItem[] {
+
+  const items: DrawItem[] = [];
+  for (const n of scene.nodes) n._visibleNow = false;
+  const orderCounter = { v: 0 };
+  const clipStack: ClipRect[] = [];
+
+  function visit(node: RuntimeNode, parentSpriteMat: Mat2D, parentZ: number, inheritedRainbowHue: number | null) {
+    const st = node.getState(scene.stateId); if (!st) return;
+    const overrideRaw = scene.visibilityOverrides[node.key];
+    const override = overrideRaw && typeof overrideRaw === "object" ? overrideRaw : null;
+    const overrideValue = override ? override.visible : overrideRaw;
+    if (overrideValue === false) return;
+
+    let visible = st.visible !== false;
+    const baseModulate = mulColor(st.colored, st.tint);
+
+    let rainbowHueForSelf: number | null = null;
+    let rainbowHueForChildren = inheritedRainbowHue;
+    if (st.rainbow && Number.isFinite(node._rainbowHue)) {
+      const hq = quantize01(node._rainbowHue, 60);
+      rainbowHueForSelf = hq;
+      if (!st.rainbow_self) rainbowHueForChildren = hq;
+    } else if (Number.isFinite(inheritedRainbowHue ?? NaN)) {
+      rainbowHueForSelf = inheritedRainbowHue;
+    }
+
+    let modulate = baseModulate;
+    if (Number.isFinite(rainbowHueForSelf ?? NaN)) {
+      const hsv = rgbToHsv(baseModulate.r, baseModulate.g, baseModulate.b);
+      const rgb = hsvToRgb(rainbowHueForSelf!, 1, hsv.v);
+      modulate = { r: rgb.r, g: rgb.g, b: rgb.b, a: baseModulate.a };
+    }
+    const alpha = clamp(modulate.a, 0, 1);
+
+    if (node.raw?.is_asset && overrideValue !== true) {
+      visible = visible && !!node.raw.was_active_before;
+    }
+    if (st.should_talk) {
+      const openMouth = !!st.open_mouth;
+      const mouthOpenNow = Math.floor(scene.mouthState) !== 0;
+      visible = visible && (mouthOpenNow ? openMouth : !openMouth);
+    }
+    if (st.should_blink) {
+      const openEyes = !!st.open_eyes;
+      visible = visible && (scene.blinking ? !openEyes : openEyes);
+    }
+    if (!visible || alpha <= 0.001) return;
+
+    node._visibleNow = true;
+    if (!node._visiblePrev && (st.should_reset || st.one_shot)) resetNodeAnimation(node, st);
+
+    const localZ = Number(st.z_index ?? 0) || 0;
+    const z = parentZ + localZ;
+    const pos = st.position || { x: 0, y: 0 };
+    const offset = st.offset || { x: 0, y: 0 };
+    const followPos = node.runtimeFollowPos, movePos = node.runtimeMovePos;
+    const posX = (Number(pos.x) || 0) + (followPos.x || 0) + (movePos.x || 0);
+    const posY = (Number(pos.y) || 0) + (followPos.y || 0) + (movePos.y || 0);
+    const baseScale = st.scale || { x: 1, y: 1 };
+    const followScale = node.runtimeFollowScale, moveScale = node.runtimeMoveScale;
+    const scale = {
+      x: (Number(baseScale.x) || 1) * (followScale.x || 1) * (moveScale.x || 1),
+      y: (Number(baseScale.y) || 1) * (followScale.y || 1) * (moveScale.y || 1),
+    };
+    const rotation = (Number(st.rotation) || 0)
+      + (node.runtimeWiggleRotation || 0) + (node.runtimeFollowRot || 0)
+      + (node.runtimeMoveRot || 0) + (node.runtimeAutoRot || 0);
+
+    let baseMat = parentSpriteMat
+      .multiply(Mat2D.translate(posX, posY))
+      .multiply(Mat2D.rotate(rotation))
+      .multiply(Mat2D.scale(scale.x || 1, scale.y || 1));
+    let spriteMat = baseMat.multiply(Mat2D.translate(Number(offset.x) || 0, Number(offset.y) || 0));
+    if (st.flip_sprite_h || st.flip_sprite_v)
+      spriteMat = spriteMat.multiply(Mat2D.scale(st.flip_sprite_h ? -1 : 1, st.flip_sprite_v ? -1 : 1));
+
+    let drawable = scene.spriteDrawableByIndex.get(node.index);
+
+    // 按需解码：仅当节点真的可见时才触发贴图解
+    if (!drawable && scene.textureManager) {
+      scene.textureManager.request(node);
+    }
+
+    if (drawable && scene.textureManager) {
+      scene.textureManager.touchDrawable(drawable);
+    }
+
+    if (drawable) {
+      items.push({
+        order: orderCounter.v++, z, mat: spriteMat, clip: clipStack.slice(),
+        alpha, blend: compositeForBlendMode(st.blend_mode),
+        tint: {
+          r: clamp(modulate.r, 0, 1),
+          g: clamp(modulate.g, 0, 1),
+          b: clamp(modulate.b, 0, 1),
+          a: 1,
+        },
+        drawable,
+        texXform: node._texXform || null,
+        hf: st.hframes ?? 1, vf: st.vframes ?? 1,
+        frame: node.runtimeFrameOverride ?? node.runtimeFrame ?? st.frame ?? 0,
+      });
+    }
+
+    const shouldClipChildren = scene.enableClip && Number(st.clip || 0) !== 0;
+    let pushedClip = false;
+    if (shouldClipChildren) {
+      let w = 0, h = 0;
+      if (drawable) {
+        const s = getImageLogicalSize(drawable);
+        w = s.w; h = s.h;
+        if (node._texXform?.swapLogicalWH) {
+          const t = w;
+          w = h;
+          h = t;
+        }
+      } else if (scene.textureManager) {
+        const s = scene.textureManager.getNodeLogicalSize(node);
+        w = s.w; h = s.h;
+      }
+
+      if (w > 0 && h > 0) {
+        const hfC = Math.max(1, Math.floor(Number(st.hframes) || 1));
+        const vfC = Math.max(1, Math.floor(Number(st.vframes) || 1));
+        clipStack.push({ mat: spriteMat, x: -w / hfC / 2, y: -h / vfC / 2, w: w / hfC, h: h / vfC });
+        pushedClip = true;
+      }
+    }
+
+    for (const c of node.children) visit(c, spriteMat, z, rainbowHueForChildren);
+    if (pushedClip) clipStack.pop();
+
+  }
+
+  for (const r of scene.roots) visit(r, rootSpriteMat, 0, null);
+  for (const n of scene.nodes) n._visiblePrev = !!n._visibleNow;
+  return items;
+}
+
+// ============================================================================
+// sortDrawItems / drawItem / renderScene
+// ============================================================================
+
+function sortDrawItems(list: DrawItem[]) {
+  list.sort((a, b) => (a.z - b.z) || (a.order - b.order));
+}
+
+type GlTextureRecord = {
+  texture: WebGLTexture;
+  w: number;
+  h: number;
+  filter: number;
+  animated: boolean;
+  lastUploadFrame: number;
+};
+
+class WebGLSceneRenderer {
+  private canvas: HTMLCanvasElement;
+  private gl: WebGLRenderingContext;
+  private program: WebGLProgram;
+  private buffer: WebGLBuffer;
+  private aPos: number;
+  private aUv: number;
+  private uMat: WebGLUniformLocation;
+  private uResolution: WebGLUniformLocation;
+  private uColor: WebGLUniformLocation;
+  private uTex: WebGLUniformLocation;
+  private whiteTexture: WebGLTexture;
+  private textures = new Map<any, GlTextureRecord>();
+  private quadData = new Float32Array(16);
+  private matArray = new Float32Array(9);          // 预分配矩阵缓冲区，避免每帧 new
+  private readPixelsBuf = new Uint8Array(3 * 3 * 4); // 预分配 readPixels 缓冲区（最大 3×3）
+  private frameId = 0;
+  private blendMode: PngRemixBlendMode | null = null;
+
+  constructor(canvas: HTMLCanvasElement) {
+    this.canvas = canvas;
+    const gl = (canvas.getContext("webgl", {
+      alpha: true,
+      antialias: isAntialiasEnabled(),
+      premultipliedAlpha: false,
+      preserveDrawingBuffer: true,
+      stencil: true,
+    }) || canvas.getContext("experimental-webgl")) as WebGLRenderingContext | null;
+    if (!gl) throw new Error("WebGL is not available");
+    this.gl = gl;
+
+    const vsSource = `
+      attribute vec2 a_pos;
+      attribute vec2 a_uv;
+      uniform mat3 u_mat;
+      uniform vec2 u_resolution;
+      varying vec2 v_uv;
+      void main() {
+        vec3 p = u_mat * vec3(a_pos, 1.0);
+        vec2 ndc = vec2((p.x / u_resolution.x) * 2.0 - 1.0, 1.0 - (p.y / u_resolution.y) * 2.0);
+        gl_Position = vec4(ndc, 0.0, 1.0);
+        v_uv = a_uv;
+      }
+    `;
+    const fsSource = `
+      precision mediump float;
+      varying vec2 v_uv;
+      uniform sampler2D u_tex;
+      uniform vec4 u_color;
+      void main() {
+        vec4 tex = texture2D(u_tex, v_uv);
+        // Straight-alpha pipeline to match Canvas2D tint + globalAlpha behavior.
+        gl_FragColor = vec4(tex.rgb * u_color.rgb, tex.a * u_color.a);
+      }
+    `;
+    const program = this.createProgram(vsSource, fsSource);
+    if (!program) throw new Error("Failed to create WebGL shader program");
+    this.program = program;
+
+    const buffer = gl.createBuffer();
+    if (!buffer) throw new Error("Failed to create WebGL vertex buffer");
+    this.buffer = buffer;
+
+    const aPos = gl.getAttribLocation(program, "a_pos");
+    const aUv = gl.getAttribLocation(program, "a_uv");
+    const uMat = gl.getUniformLocation(program, "u_mat");
+    const uResolution = gl.getUniformLocation(program, "u_resolution");
+    const uColor = gl.getUniformLocation(program, "u_color");
+    const uTex = gl.getUniformLocation(program, "u_tex");
+    if (aPos < 0 || aUv < 0 || !uMat || !uResolution || !uColor || !uTex) {
+      throw new Error("Failed to bind WebGL shader attributes/uniforms");
+    }
+    this.aPos = aPos;
+    this.aUv = aUv;
+    this.uMat = uMat;
+    this.uResolution = uResolution;
+    this.uColor = uColor;
+    this.uTex = uTex;
+
+    const white = gl.createTexture();
+    if (!white) throw new Error("Failed to create WebGL helper texture");
+    this.whiteTexture = white;
+    gl.bindTexture(gl.TEXTURE_2D, white);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+    gl.texImage2D(
+      gl.TEXTURE_2D,
+      0,
+      gl.RGBA,
+      1,
+      1,
+      0,
+      gl.RGBA,
+      gl.UNSIGNED_BYTE,
+      new Uint8Array([255, 255, 255, 255]),
+    );
+    gl.bindTexture(gl.TEXTURE_2D, null);
+
+    gl.useProgram(program);
+    gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
+    gl.enableVertexAttribArray(aPos);
+    gl.enableVertexAttribArray(aUv);
+    gl.vertexAttribPointer(aPos, 2, gl.FLOAT, false, 16, 0);
+    gl.vertexAttribPointer(aUv, 2, gl.FLOAT, false, 16, 8);
+    gl.uniform1i(uTex, 0);
+    gl.enable(gl.BLEND);
+    gl.clearColor(0, 0, 0, 0);
+  }
+
+  destroy(): void {
+    const gl = this.gl;
+    for (const rec of this.textures.values()) gl.deleteTexture(rec.texture);
+    this.textures.clear();
+    gl.deleteTexture(this.whiteTexture);
+    gl.deleteBuffer(this.buffer);
+    gl.deleteProgram(this.program);
+
+    // 显式释放 WebGL 上下文，确保 GPU 资源立即回收
+    try {
+      const ext = gl.getExtension("WEBGL_lose_context");
+      ext?.loseContext();
+    } catch { /* ignore */ }
+
+    // 清零 canvas 缓冲区，协助浏览器回收显存
+    try {
+      this.canvas.width = 0;
+      this.canvas.height = 0;
+    } catch { /* ignore */ }
+  }
+
+  getWidth(): number {
+    return this.canvas.width;
+  }
+
+  getHeight(): number {
+    return this.canvas.height;
+  }
+
+  releaseDrawable(drawable: any): void {
+    const rec = this.textures.get(drawable);
+    if (!rec) return;
+    this.gl.deleteTexture(rec.texture);
+    this.textures.delete(drawable);
+  }
+
+  render(items: DrawItem[]): void {
+    const gl = this.gl;
+    this.frameId++;
+
+    const w = Math.max(1, this.canvas.width | 0);
+    const h = Math.max(1, this.canvas.height | 0);
+    gl.viewport(0, 0, w, h);
+    gl.clear(gl.COLOR_BUFFER_BIT | gl.STENCIL_BUFFER_BIT);
+
+    gl.useProgram(this.program);
+    gl.uniform2f(this.uResolution, w, h);
+    gl.activeTexture(gl.TEXTURE0);
+    gl.bindBuffer(gl.ARRAY_BUFFER, this.buffer);
+
+    for (const item of items) {
+      if (!item.drawable) continue;
+      const tex = this.ensureTexture(item.drawable);
+      if (!tex) continue;
+
+      const frame = getFrameInfo(
+        item.drawable,
+        item.hf,
+        item.vf,
+        item.frame,
+        !!item.texXform?.swapLogicalWH,
+      );
+      if (!frame) continue;
+
+      let mat = item.mat;
+      const tx = item.texXform;
+      if (tx && (tx.flipH || tx.flipV || tx.rot)) {
+        mat = mat
+          .multiply(Mat2D.rotate((Number(tx.rot) || 0) * Math.PI / 2))
+          .multiply(Mat2D.scale(tx.flipH ? -1 : 1, tx.flipV ? -1 : 1));
+      }
+
+      const x0 = -frame.w / 2;
+      const y0 = -frame.h / 2;
+      const x1 = frame.w / 2;
+      const y1 = frame.h / 2;
+
+      const hadClip = item.clip.length > 0;
+      if (hadClip) this.beginClip(item.clip);
+
+      this.setBlendMode(item.blend);
+      this.drawQuad(tex, mat, x0, y0, x1, y1, frame.u0, frame.v0, frame.u1, frame.v1, item.tint, item.alpha);
+
+      if (hadClip) this.endClip();
+    }
+  }
+
+  isOpaqueAtCanvasPx(px: number, py: number, alphaThreshold: number): boolean {
+    const gl = this.gl;
+    const w = Math.max(1, this.canvas.width | 0);
+    const h = Math.max(1, this.canvas.height | 0);
+    if (px < 0 || py < 0 || px >= w || py >= h) return false;
+
+    const x0 = Math.max(0, Math.min(w - 1, Math.floor(px) - 1));
+    const y0 = Math.max(0, Math.min(h - 1, Math.floor(py) - 1));
+    const rw = Math.max(1, Math.min(3, w - x0));
+    const rh = Math.max(1, Math.min(3, h - y0));
+    const readY = h - y0 - rh;
+
+    const len = rw * rh * 4;
+    const data = this.readPixelsBuf;
+    try {
+      gl.readPixels(x0, readY, rw, rh, gl.RGBA, gl.UNSIGNED_BYTE, data);
+    } catch {
+      return false;
+    }
+    for (let i = 3; i < len; i += 4) {
+      if (data[i] >= alphaThreshold) return true;
+    }
+    return false;
+  }
+
+  private createProgram(vsSource: string, fsSource: string): WebGLProgram | null {
+    const gl = this.gl;
+    const vs = this.compileShader(gl.VERTEX_SHADER, vsSource);
+    const fs = this.compileShader(gl.FRAGMENT_SHADER, fsSource);
+    if (!vs || !fs) return null;
+    const p = gl.createProgram();
+    if (!p) return null;
+    gl.attachShader(p, vs);
+    gl.attachShader(p, fs);
+    gl.linkProgram(p);
+    const ok = !!gl.getProgramParameter(p, gl.LINK_STATUS);
+    gl.deleteShader(vs);
+    gl.deleteShader(fs);
+    if (!ok) {
+      gl.deleteProgram(p);
+      return null;
+    }
+    return p;
+  }
+
+  private compileShader(type: number, source: string): WebGLShader | null {
+    const gl = this.gl;
+    const s = gl.createShader(type);
+    if (!s) return null;
+    gl.shaderSource(s, source);
+    gl.compileShader(s);
+    if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) {
+      gl.deleteShader(s);
+      return null;
+    }
+    return s;
+  }
+
+  private ensureTexture(drawable: any): WebGLTexture | null {
+    const gl = this.gl;
+    const sz = getImageSize(drawable);
+    if (!sz.w || !sz.h) return null;
+
+    const animated = !!drawable?._isAnimated;
+    const desiredFilter = getPngRemixTextureFilter(gl);
+    let rec = this.textures.get(drawable);
+    if (!rec) {
+      const texture = gl.createTexture();
+      if (!texture) return null;
+      rec = { texture, w: 0, h: 0, filter: desiredFilter, animated, lastUploadFrame: -1 };
+      this.textures.set(drawable, rec);
+      gl.bindTexture(gl.TEXTURE_2D, texture);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, desiredFilter);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, desiredFilter);
+    } else {
+      gl.bindTexture(gl.TEXTURE_2D, rec.texture);
+      if (rec.filter !== desiredFilter) {
+        rec.filter = desiredFilter;
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, desiredFilter);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, desiredFilter);
+      }
+    }
+
+    const needUpload =
+      rec.w !== sz.w ||
+      rec.h !== sz.h ||
+      rec.animated !== animated ||
+      (animated && rec.lastUploadFrame !== this.frameId);
+
+    if (needUpload) {
+      try {
+        gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, 0);
+        gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, 0);
+        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, drawable as TexImageSource);
+      } catch {
+        this.releaseDrawable(drawable);
+        return null;
+      }
+      rec.w = sz.w;
+      rec.h = sz.h;
+      rec.animated = animated;
+      rec.lastUploadFrame = this.frameId;
+    }
+
+    return rec.texture;
+  }
+
+  private beginClip(clips: ClipRect[]): void {
+    const gl = this.gl;
+    gl.enable(gl.STENCIL_TEST);
+    gl.clearStencil(0);
+    gl.clear(gl.STENCIL_BUFFER_BIT);
+    gl.colorMask(false, false, false, false);
+    gl.disable(gl.BLEND);
+
+    for (let i = 0; i < clips.length; i++) {
+      if (i === 0) {
+        gl.stencilFunc(gl.ALWAYS, 1, 0xff);
+        gl.stencilOp(gl.REPLACE, gl.REPLACE, gl.REPLACE);
+      } else {
+        gl.stencilFunc(gl.EQUAL, 1, 0xff);
+        gl.stencilOp(gl.KEEP, gl.KEEP, gl.REPLACE);
+      }
+      const c = clips[i];
+      this.drawQuad(
+        this.whiteTexture,
+        c.mat,
+        c.x,
+        c.y,
+        c.x + c.w,
+        c.y + c.h,
+        0,
+        0,
+        1,
+        1,
+        { r: 1, g: 1, b: 1, a: 1 },
+        1,
+      );
+    }
+
+    gl.colorMask(true, true, true, true);
+    gl.enable(gl.BLEND);
+    gl.stencilFunc(gl.EQUAL, 1, 0xff);
+    gl.stencilOp(gl.KEEP, gl.KEEP, gl.KEEP);
+  }
+
+  private endClip(): void {
+    this.gl.disable(this.gl.STENCIL_TEST);
+  }
+
+  private setBlendMode(mode: PngRemixBlendMode): void {
+    const gl = this.gl;
+    gl.enable(gl.BLEND);
+    if (this.blendMode === mode) return;
+    gl.blendEquation(gl.FUNC_ADD);
+    switch (mode) {
+      case "add":
+        gl.blendFuncSeparate(gl.SRC_ALPHA, gl.ONE, gl.ONE, gl.ONE);
+        break;
+      case "multiply":
+        gl.blendFuncSeparate(gl.DST_COLOR, gl.ONE_MINUS_SRC_ALPHA, gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
+        break;
+      case "difference":
+        gl.blendEquation(gl.FUNC_REVERSE_SUBTRACT);
+        gl.blendFuncSeparate(gl.ONE, gl.ONE, gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
+        break;
+      case "normal":
+      default:
+        gl.blendFuncSeparate(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA, gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
+        break;
+    }
+    this.blendMode = mode;
+  }
+
+  private drawQuad(
+    texture: WebGLTexture,
+    mat: Mat2D,
+    x0: number,
+    y0: number,
+    x1: number,
+    y1: number,
+    u0: number,
+    v0: number,
+    u1: number,
+    v1: number,
+    tint: RGBA,
+    alpha: number,
+  ): void {
+    const gl = this.gl;
+    this.quadData[0] = x0; this.quadData[1] = y0; this.quadData[2] = u0; this.quadData[3] = v0;
+    this.quadData[4] = x1; this.quadData[5] = y0; this.quadData[6] = u1; this.quadData[7] = v0;
+    this.quadData[8] = x0; this.quadData[9] = y1; this.quadData[10] = u0; this.quadData[11] = v1;
+    this.quadData[12] = x1; this.quadData[13] = y1; this.quadData[14] = u1; this.quadData[15] = v1;
+    gl.bufferData(gl.ARRAY_BUFFER, this.quadData, gl.DYNAMIC_DRAW);
+
+    gl.bindTexture(gl.TEXTURE_2D, texture);
+    const m = this.matArray;
+    m[0] = mat.a; m[1] = mat.b; m[2] = 0;
+    m[3] = mat.c; m[4] = mat.d; m[5] = 0;
+    m[6] = mat.e; m[7] = mat.f; m[8] = 1;
+    gl.uniformMatrix3fv(this.uMat, false, m);
+    gl.uniform4f(
+      this.uColor,
+      clamp(tint.r, 0, 1),
+      clamp(tint.g, 0, 1),
+      clamp(tint.b, 0, 1),
+      clamp(alpha, 0, 1),
+    );
+    gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+  }
+}
+
+function renderScene(scene: RuntimeScene, renderer: WebGLSceneRenderer, zoom: number, panX: number, panY: number, enableTrim = false) {
+  // 标记新帧开始，清空"本帧使用"集合
+  scene.textureManager?.beginFrame();
+
+  const w = renderer.getWidth();
+  const h = renderer.getHeight();
+
+  const center = Mat2D.translate(w / 2, h / 2)
+    .multiply(Mat2D.translate(panX, panY))
+    .multiply(Mat2D.scale(zoom, zoom));
+  const jumpY = scene.viewerJumpY || 0;
+  const rootMat = Math.abs(jumpY) > 1e-6 ? center.multiply(Mat2D.translate(0, jumpY)) : center;
+
+  const items = buildDrawList(scene, rootMat);
+  sortDrawItems(items);
+  renderer.render(items);
+
+  // LRU 回收：每 30 帧做一次预算检查（降低 CPU 开销
+  if (enableTrim) {
+    scene._frameCount = (scene._frameCount || 0) + 1;
+    if (scene._frameCount >= 30) {
+      scene._frameCount = 0;
+      scene.textureManager?.trim();
+    }
+  }
+}
+
+
+// ============================================================================
+// buildRuntimeScene
+// ============================================================================
+
+async function buildRuntimeScene(normalizedModel: any, decodePolicy: TextureDecodePolicy | null = null): Promise<RuntimeScene> {
+
+  const scene = new RuntimeScene(normalizedModel);
+
+  scene.nodes = normalizedModel.sprites.map((s: any) => new RuntimeNode(s, s.index));
+  for (const n of scene.nodes) if (n.spriteId !== null && n.spriteId !== undefined) scene.nodeBySpriteId.set(n.spriteId, n);
+
+  scene.roots = [];
+  for (const n of scene.nodes) n.children = [];
+  for (const n of scene.nodes) {
+    const parent = scene.nodeBySpriteId.get(n.parentId);
+    if (parent && n.parentId !== null && n.parentId !== undefined) parent.children.push(n);
+    else scene.roots.push(n);
+  }
+  assignNodePaths(scene);
+  initNodeStateMachine(scene);
+  buildHotkeyGroups(scene);
+
+  // 保留压缩贴图 bytes（内存远小于解码后像素），用于按需解码 + LRU 反复回收/重建
+  const spriteBytesByIndex: (Uint8Array | null)[] = new Array(scene.nodes.length).fill(null);
+  for (let i = 0; i < scene.nodes.length; i++) {
+    const spriteInfo = normalizedModel.sprites?.[i];
+    const b = spriteInfo?.imgBytes;
+    if (b instanceof Uint8Array && b.length >= 6) {
+      spriteBytesByIndex[i] = b;
+      // 解除 normalizedModel bytes 的引用，便于后续释放 model 对象
+      spriteInfo.imgBytes = null;
+    }
+  }
+
+  scene.textureManager = new SpriteTextureManager(scene, spriteBytesByIndex, decodePolicy, {
+    // 动态预算：根据贴图数量调整 maxItems，避免小贴图多的角色频繁回收
+    // 策略：max(默认64, min(贴图0.8, 200))
+    maxItems: Math.max(TEXTURE_LRU_MAX_ITEMS_DEFAULT, Math.min(spriteBytesByIndex.length, 200)),
+  });
+
+  return scene;
+}
+
+
+
+// ============================================================================
+// fitViewToContent
+// ============================================================================
+
+function fitViewToContent(scene: RuntimeScene, canvasW: number, canvasH: number): { zoom: number; panX: number; panY: number } {
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+  let count = 0;
+  for (const n of scene.nodes) {
+    const st = n.getState(scene.stateId); if (!st || st.visible === false) continue;
+    const p = st.position || { x: 0, y: 0 };
+    minX = Math.min(minX, Number(p.x) || 0); minY = Math.min(minY, Number(p.y) || 0);
+    maxX = Math.max(maxX, Number(p.x) || 0); maxY = Math.max(maxY, Number(p.y) || 0);
+    count++;
+  }
+  if (!count || !Number.isFinite(minX)) return { zoom: 1, panX: 0, panY: 0 };
+  const cx = (minX + maxX) / 2, cy = (minY + maxY) / 2;
+  const cw = Math.max(1, maxX - minX), ch = Math.max(1, maxY - minY);
+  const s = Math.min(canvasW / cw, canvasH / ch) * 0.65;
+  const zoom = clamp(s, 0.05, 6);
+  return { zoom, panX: -cx * zoom, panY: -cy * zoom };
+}
+
+// ============================================================================
+// PngRemixPlayer
+// ============================================================================
+
+/** PngRemix 功能开关（鼠标跟随等）*/
+export type PngRemixFeatureFlags = {
+  mouseFollow: boolean;
+};
+
+
+/**
+ * PngRemix 播放器：负责加载 .pngRemix 模型并驱动表动作/鼠标跟随
+ */
+export class PngRemixPlayer {
+
+  private canvas: HTMLCanvasElement;
+  private config: PngRemixConfig | null = null;
+  private modPath = "";
+  private scene: RuntimeScene | null = null;
+  private destroyed = false;
+
+  // Camera
+  private zoom = 1;
+  private panX = 0;
+  private panY = 0;
+
+  // Mouse tracking
+  private hasMouse = false;
+  private mouseWorld: Vec2 = { x: 0, y: 0 };
+  private mouseCanvas: Vec2 = { x: 0, y: 0 };
+  private mouseDirty = false;
+  private cameraDirty = true;
+
+  // Local high-frequency mouse follow (when the WebView can receive pointer events)
+  private localMouseMoveHandler: ((e: PointerEvent | MouseEvent) => void) | null = null;
+  private localMouseLeaveHandler: ((e: MouseEvent) => void) | null = null;
+
+  private lastLocalMouseTs = 0;
+
+  // Feature flags
+  private enableMouseFollow = true;
+  private enableClickBounce = true;
+  private enableAutoBlink = true;
+
+  // PngRemix：鼠标跟随幅度缩放（来自 manifest.pngremix_follow_amp_scale）
+  private followAmpScale = 1;
+
+  // PngRemix：摆动/晃动幅度缩放（来自 manifest.pngremix_motion_amp_scale）
+  private motionAmpScale = 1;
+
+  // PngRemix：摆动/晃动频率缩放（来自 manifest.pngremix_motion_frq_scale）
+  private motionFrqScale = 1;
+
+
+  // Animation scale (from WindowCore)
+  private animationScale = 0.4;
+
+  // Model scale (from pngremixConfig.model.scale)
+  private modelScale = 1;
+
+  // Per-State view overrides (from pngremixConfig.states mapping)
+  private stateScale = 1;
+  private stateOffsetX = 0;
+  private stateOffsetY = 0;
+
+  // Current expression/motion state
+  private currentExpression: PngRemixExpression | null = null;
+  private currentMotion: PngRemixMotion | null = null;
+
+  // Resize observer
+  private resizeObserver: ResizeObserver | null = null;
+
+  // WebGL renderer
+  private renderer: WebGLSceneRenderer;
+
+  // Idle throttle — 无交互时自动降低渲染帧率
+  private idleThrottle = new IdleThrottle();
+
+  constructor(canvas: HTMLCanvasElement) {
+    this.canvas = canvas;
+    this.renderer = new WebGLSceneRenderer(canvas);
+  }
+
+  private releaseSceneResources(scene: RuntimeScene | null): void {
+    if (!scene) return;
+
+    scene.playing = false;
+    if (scene._rafId) {
+      cancelAnimationFrame(scene._rafId);
+      scene._rafId = 0;
+    }
+    scene._lastTs = 0;
+
+    scene.autoBlink = false;
+    if (scene._autoBlinkTimer) {
+      clearInterval(scene._autoBlinkTimer);
+      scene._autoBlinkTimer = null;
+    }
+    if (scene._blinkTimeout) {
+      clearTimeout(scene._blinkTimeout);
+      scene._blinkTimeout = null;
+    }
+
+    const hadTextureManager = !!scene.textureManager;
+    if (scene.textureManager) {
+      scene.textureManager.dispose();
+      scene.textureManager = null;
+    }
+
+    if (!hadTextureManager) {
+      const closed = new Set<any>();
+      for (const drawable of scene.spriteDrawableByIndex.values()) {
+        this.renderer.releaseDrawable(drawable);
+        if (drawable instanceof ImageBitmap) {
+          if (closed.has(drawable)) continue;
+          closed.add(drawable);
+          try { drawable.close(); } catch { /* ignore */ }
+        }
+      }
+    }
+    scene.spriteDrawableByIndex.clear();
+    scene.onDrawableReleased = null;
+
+    // 释放 scene 中持有的大对象引用，切断 JS 引用链以便 GC 回收
+    // model 包含标准化后的完整模型结构（节点树、状态、参数等），
+    // nodes/roots 持有所有 RuntimeNode 的引用。若不清理，切换 Mod 后旧模型数据
+    // 会一直驻留在内存中，导致 GPU 相关的 ImageBitmap/纹理无法被回收。
+    scene.model = null;
+    scene.nodeBySpriteId.clear();
+    for (const n of scene.nodes) {
+      n.children = [];
+      (n as any).raw = null;
+    }
+    scene.nodes = [];
+    scene.roots = [];
+    scene.visibilityOverrides = {};
+    scene.hotkeyGroups = [];
+    scene.availableHotkeys.clear();
+  }
+
+  private resetBindingsForInitOrDestroy(): void {
+    this.unbindLocalMouseFollow();
+    if (this.resizeObserver) {
+      this.resizeObserver.disconnect();
+      this.resizeObserver = null;
+    }
+    this.cameraDirty = true;
+    this.mouseDirty = true;
+  }
+
+  // ==== PUBLIC API ====
+
+  /**
+   * 初始化播放器并加PngRemix 模型资源
+   */
+  async init(modPath: string, config: PngRemixConfig, manifest?: { enable_texture_downsample?: boolean; texture_downsample_start_dim?: number; pngremix_follow_amp_scale?: number; pngremix_motion_amp_scale?: number; pngremix_motion_frq_scale?: number }): Promise<void> {
+    if (this.destroyed) {
+      throw new Error("PngRemixPlayer has been destroyed");
+    }
+
+    // Make init idempotent: fully tear down previous scene resources.
+    this.resetBindingsForInitOrDestroy();
+    this.releaseSceneResources(this.scene);
+    this.scene = null;
+
+    // PngRemix：缩放参数（manifest 可配置）
+    const followRaw = Number((manifest as any)?.pngremix_follow_amp_scale);
+    const motionAmpRaw = Number((manifest as any)?.pngremix_motion_amp_scale);
+    const motionFrqRaw = Number((manifest as any)?.pngremix_motion_frq_scale);
+
+    // 幅度缩放：只影响摆动幅度
+    this.motionAmpScale = Number.isFinite(motionAmpRaw) ? clamp(motionAmpRaw, 0, 2) : 1;
+
+    // 频率缩放：只影响摆动频率
+    this.motionFrqScale = Number.isFinite(motionFrqRaw) ? clamp(motionFrqRaw, 0, 2) : 1;
+
+    // 兼容：旧 mod 只有 pngremix_motion_amp_scale 时，让它也能控制“鼠标跟随幅度”
+    this.followAmpScale = Number.isFinite(followRaw) ? clamp(followRaw, 0, 2) : this.motionAmpScale;
+
+
+    // backend current_mod 为准，确保切Mod 时序正确
+    const ds = await resolveTextureDownsampleSettingsFromBackend(modPath, {
+      enabled: manifest?.enable_texture_downsample,
+      startDim: manifest?.texture_downsample_start_dim,
+    });
+
+    this.modPath = modPath;
+    this.config = config;
+
+    await ensureScripts();
+
+    // Fetch the .pngRemix file
+    const url = buildModAssetUrl(modPath, config.model.pngremix_file);
+    const resp = await fetch(url);
+    if (!resp.ok) throw new Error(`Failed to fetch pngRemix: ${resp.status}`);
+    let ab = await resp.arrayBuffer();
+
+    const W = (globalThis as any);
+    let decoded = W.PngRemixDecoder.decode(ab);
+    let normalized = W.ModelNormalizer.normalizePngRemixModel(decoded);
+    ab = null as any;
+
+    // 贴图解码降采封顶：逻辑尺寸按原图，实际像素可更小（降低内存占用
+    // 像素封顶 maxDim：与 manifest.texture_downsample_start_dim 保持一致（后端动态读取）
+    const scaleRaw = Number((config.model as any)?.texture_decode_scale);
+    const maxDim = Math.max(0, Math.floor(Number(ds.startDim) || 0));
+    const scale = Number.isFinite(scaleRaw) && scaleRaw > 0 ? clamp(scaleRaw, TEXTURE_DECODE_MIN_SCALE, 1) : 1;
+    const decodePolicy: TextureDecodePolicy | null = (ds.enabled && (maxDim > 0 || scale < TEXTURE_DECODE_NO_RESIZE_EPS))
+      ? { maxDim, scale, startDim: ds.startDim }
+      : null;
+
+
+    this.scene = await buildRuntimeScene(normalized, decodePolicy);
+    this.scene.onDrawableReleased = (drawable: any) => {
+      this.renderer.releaseDrawable(drawable);
+    };
+
+    decoded = null as any;
+    normalized = null as any;
+
+
+    // Apply config features
+    this.applyConfigFeatures(config);
+
+    // Apply default state
+    if (config.model.default_state_index > 0) {
+      materializeSceneState(this.scene, config.model.default_state_index);
+    }
+
+    // 按需解码预热：预请求初始状态下可见的贴图，减少首帧空白/闪烁
+    try {
+      buildDrawList(this.scene, Mat2D.identity());
+    } catch {
+      /* ignore */
+    }
+
+    // Apply model scale
+
+    this.modelScale = Number((config.model as any)?.scale) || 1;
+
+    // Setup canvas and fit
+    this.resizeCanvas();
+    this.bindResize();
+    this.recomputeView();
+
+    // Start playback
+    this.startPlayback();
+
+    // Start auto blink
+    if (this.enableAutoBlink && this.config) {
+      this.startAutoBlink();
+    }
+
+  }
+
+  /**
+   * 释放渲染资源与监听器
+   */
+  destroy(): void {
+    if (this.destroyed) return;
+
+    this.destroyed = true;
+    this.resetBindingsForInitOrDestroy();
+    this.releaseSceneResources(this.scene);
+
+    // 显式关闭 ImageBitmap 以立即释GPU 纹理资源（注意：贴图可能被多sprite 共享
+    clearTintCache();
+    this.scene = null;
+
+    this.config = null;
+    this.renderer.destroy();
+  }
+
+
+  /**
+   * Called by WindowCore when backend enters a new StateInfo.
+   * assetName == StateInfo.anima. For pngremix, we map it via pngremixConfig.states.
+   */
+  /**
+   * WindowCore 触发的状态播放入口（StateInfo.anima）
+   */
+  playFromAnima(
+    animaName: string,
+    playOnce: boolean,
+    onComplete: () => void,
+    pngremixParams?: PngRemixParameterSetting[],
+  ): boolean {
+
+    if (!this.scene || !this.config) return false;
+
+    // 1) Apply state mapping: StateInfo.anima -> PngRemixState (expression/motion/scale/offset)
+    const key = String(animaName || "").trim();
+    const mapping = this.config.states?.find((s) => String(s?.state || "").trim() === key) || null;
+    if (mapping) {
+      this.applyPngRemixStateMapping(mapping);
+    }
+
+    // 2) Apply explicit overrides (if provided)
+    this.applyPngRemixParams(pngremixParams);
+
+    // PngRemix has no finite animation duration concept.
+    // For playOnce, call onComplete shortly after applying switches.
+    if (playOnce) setTimeout(onComplete, 100);
+    return true;
+  }
+
+  /**
+   * Update mouse position from WindowCore cursor tracking.
+   * 注意：WindowCore 传入的是"窗口视口坐标"（CSS 逻辑像素），不是 canvas 内部坐标
+   * 如果直接当成 canvas 坐标，会在某些布局（如 canvas 不在 (0,0)）下产生跳变，表现为鬼畜抖动/点头
+   */
+  updateGlobalMouseFollow(localX: number, localY: number): void {
+    if (!this.scene) return;
+
+    // 如果最近已经收到过 canvas 内的高频 pointer/mouse 事件，就优先使用它们
+    // 避免 windowcore(轮询) local events 混用导致坐标系切换
+    const now = performance.now();
+    if (this.lastLocalMouseTs > 0 && now - this.lastLocalMouseTs < 200) {
+      return;
+    }
+
+    this.recordMouseViewportPosition(localX, localY, "windowcore");
+  }
+
+  /**
+   * 检canvas 上指定坐标附近是否存在不透明像素
+   * 使用多点采样（中+ 周围扩展），在模型边缘提供足够的容差
+   * 使穿透可以在鼠标到达模型之前提前关闭
+   * @param screenX 窗口X 坐标（CSS 逻辑坐标
+   * @param screenY 窗口Y 坐标（CSS 逻辑坐标
+   * @param alphaThreshold alpha 阈值（0-255），低于此值视为透明
+   * @returns true = 不透明（拦截鼠标），false = 透明（允许穿透）
+   */
+  isPixelOpaqueAtScreen(screenX: number, screenY: number, alphaThreshold = 10): boolean {
+    const rect = this.canvas.getBoundingClientRect();
+
+    // screenX/screenY 为窗口视口坐标（CSS 逻辑像素）。先转为 canvas 内部坐标（CSS）
+    const cssX = screenX - rect.left;
+    const cssY = screenY - rect.top;
+
+    if (cssX < 0 || cssY < 0 || cssX >= rect.width || cssY >= rect.height) {
+      return false;
+    }
+
+    const dpr = getRenderDpr();
+    const px = cssX * dpr;
+    const py = cssY * dpr;
+    return this.renderer.isOpaqueAtCanvasPx(px, py, alphaThreshold);
+  }
+
+  setAnimationScale(scale: number): void {
+    this.animationScale = scale;
+    // NOTE: animationScale Rust 端通过调整窗口/canvas 的物理尺寸实现
+    // 这里不再animationScale 叠加到相zoom 上，否则会出现“窗口变+ 相机再放大”导致裁切
+    // ResizeObserver 会在 canvas 尺寸变化时自动触resizeCanvas + recomputeView
+  }
+
+
+  setFeatureFlags(flags: PngRemixFeatureFlags): void {
+    this.enableMouseFollow = flags.mouseFollow;
+    this.syncMouseFollowBindings();
+  }
+
+  triggerClickBounce(): void {
+    if (!this.scene || !this.config) return;
+    const features = this.config.features;
+    if (!features.click_bounce) return;
+    this.idleThrottle.poke();
+    this.scene._clickBounce.active = true;
+    this.scene._clickBounce.t = 0;
+    this.scene._clickBounce.dur = features.click_bounce_duration || 0.5;
+    this.scene._clickBounce.amp = features.click_bounce_amp || 50;
+  }
+
+  /**
+   * 直接切换到指定表情状态
+   */
+  playExpression(name: string): void {
+
+    if (!this.scene || !this.config) return;
+    const expr = this.config.expressions.find((e) => e.name === name);
+    if (!expr) { console.warn("[PngRemixPlayer] Expression not found:", name); return; }
+    this.currentExpression = expr;
+    materializeSceneState(this.scene, expr.state_index);
+  }
+
+  /**
+   * 触发指定动作（可附带快捷键驱动）
+   */
+  playMotion(name: string): void {
+    this.idleThrottle.poke();
+    if (!this.scene || !this.config) return;
+    const motion = this.config.motions.find((m) => m.name === name);
+    if (!motion) { console.warn("[PngRemixPlayer] Motion not found:", name); return; }
+    this.currentMotion = motion;
+    const hotkey = String(motion.hotkey || "").trim();
+    if (hotkey) this.applyHotkey(hotkey);
+  }
+
+  // ==== PRIVATE ====
+
+  private applyConfigFeatures(config: PngRemixConfig): void {
+    const f = config.features;
+    this.enableMouseFollow = f.mouse_follow;
+    this.enableAutoBlink = f.auto_blink;
+    this.enableClickBounce = f.click_bounce;
+
+    this.syncMouseFollowBindings();
+
+    if (this.scene) {
+      this.scene._clickBounce.amp = f.click_bounce_amp || 50;
+      this.scene._clickBounce.dur = f.click_bounce_duration || 0.5;
+    }
+  }
+
+  private recomputeView(): void {
+    if (!this.scene) return;
+
+    const fit = fitViewToContent(this.scene, this.canvas.width, this.canvas.height);
+
+    // NOTE: 不把 WindowCore animationScale 叠加到相机
+    // animationScale 会由 Rust 调整窗口大小，canvas 变大fit.zoom 会自然变化
+    const factor = (Number(this.modelScale) || 1) * (Number(this.stateScale) || 1);
+    const dpr = getRenderDpr();
+
+    // fit.panX/panY are derived from fit.zoom, so they should be scaled together.
+    this.zoom = fit.zoom * factor;
+    this.panX = fit.panX * factor + (Number(this.stateOffsetX) || 0) * dpr;
+    this.panY = fit.panY * factor + (Number(this.stateOffsetY) || 0) * dpr;
+
+
+    this.cameraDirty = true;
+    this.mouseDirty = true;
+  }
+
+  private applyPngRemixParams(pngremixParams?: PngRemixParameterSetting[]): void {
+    if (!this.scene || !this.config) return;
+    if (!pngremixParams || pngremixParams.length === 0) return;
+    for (const p of pngremixParams) {
+      if (p.type === "expression") this.playExpression(p.name);
+      else if (p.type === "motion") this.playMotion(p.name);
+    }
+  }
+
+  private applyPngRemixStateMapping(state: PngRemixConfig["states"][number]): void {
+    this.idleThrottle.poke();
+    const scene = this.scene;
+    if (!scene) return;
+
+    // Mouth state overrides (optional)
+    // 对齐预览工具（other-tool/pngRemix预览）的语义
+    // - mouth_state: 0=Closed, 1=Open, 2=Screaming
+    // - 渲染阶段`mouthState !== 0` 作为"张嘴判定
+    const mouthStateRaw = Number((state as any).mouth_state);
+    if (Number.isFinite(mouthStateRaw)) {
+      scene.mouthState = clamp(Math.floor(mouthStateRaw), 0, 2);
+    }
+
+
+    // View overrides
+    this.stateScale = Number((state as any).scale) || 1;
+    this.stateOffsetX = Number((state as any).offset_x) || 0;
+    this.stateOffsetY = Number((state as any).offset_y) || 0;
+    this.recomputeView();
+
+    // Expression/motion
+    const expr = String((state as any).expression || "").trim();
+    if (expr) this.playExpression(expr);
+    const motion = String((state as any).motion || "").trim();
+    if (motion) this.playMotion(motion);
+  }
+
+
+  private applyHotkey(hotkey: string): void {
+    const scene = this.scene;
+    if (!scene) return;
+
+    const k = normalizeKeyName(hotkey);
+    if (!k) return;
+
+    // If the scene was created by an older instance, rebuild groups lazily.
+    if (!scene.availableHotkeys || !(scene.availableHotkeys instanceof Set) || !scene.hotkeyGroups) {
+      buildHotkeyGroups(scene);
+    }
+
+    // Clear previous hotkey-created overrides (keep manual overrides).
+    if (scene.visibilityOverrides) {
+      for (const key of Object.keys(scene.visibilityOverrides)) {
+        const v = scene.visibilityOverrides[key];
+        const src = (v && typeof v === "object") ? String((v as any).source || "") : "";
+        if (src === "hotkey" || src.startsWith("hotkey")) {
+          delete scene.visibilityOverrides[key];
+        }
+      }
+    }
+
+    const applyByScan = () => {
+      // Fallback path: scan raw sprite bindings directly.
+      // This matches preview tool behavior: saved_keys + saved_disappear are "hide on key".
+      const byParent = new Map<any, RuntimeNode[]>();
+      for (const node of scene.nodes) {
+        const raw = node.raw || {};
+        if ((raw as any).is_asset !== true) continue;
+        const pid = node.parentId ?? null;
+        if (!byParent.has(pid)) byParent.set(pid, []);
+        byParent.get(pid)!.push(node);
+      }
+
+      const getSavedKeys = (raw: any): Set<string> => {
+        const sk = raw && Array.isArray(raw.saved_keys) ? raw.saved_keys : [];
+        const keysFromSaved = sk.map(normalizeKeyName).filter((x: string) => x.length > 0);
+
+        const sd = raw && Array.isArray(raw.saved_disappear) ? raw.saved_disappear : [];
+        const keysFromDisappear: string[] = [];
+        for (const ev of sd) {
+          const { hotkey } = normalizeSavedDisappearEvent(ev);
+          if (hotkey) keysFromDisappear.push(hotkey);
+        }
+
+        return new Set<string>([...keysFromSaved, ...keysFromDisappear]);
+      };
+
+      for (const [, nodes] of byParent) {
+        // Only consider "binding groups" to avoid forcing visibility for unrelated single assets.
+        if (nodes.length < 2) continue;
+
+        const savedByNode = new Map<RuntimeNode, Set<string>>();
+        for (const n of nodes) {
+          const s = getSavedKeys(n.raw);
+          if (s.size > 0) savedByNode.set(n, s);
+        }
+
+        // Skip groups that do not mention this hotkey.
+        const groupRelevant = nodes.some((n) => (savedByNode.get(n) || new Set<string>()).has(k));
+        if (!groupRelevant) continue;
+
+        for (const n of nodes) {
+          const savedKeys = savedByNode.get(n) || new Set<string>();
+          const visible = !savedKeys.has(k);
+          scene.visibilityOverrides[n.key] = { visible, source: "hotkey", hotkey: k };
+        }
+      }
+    };
+
+    // Prefer prebuilt groups if available; otherwise fall back to scanning.
+    if (!scene.availableHotkeys || !scene.availableHotkeys.has(k) || !scene.hotkeyGroups || scene.hotkeyGroups.length === 0) {
+      applyByScan();
+      return;
+    }
+
+    // Apply hotkey overrides using preview-tool semantics.
+    // For each hotkey group: if the node's savedKeys contains k -> hide; otherwise show.
+    let applied = false;
+    for (const g of scene.hotkeyGroups || []) {
+      const nodes = (g && Array.isArray((g as any).nodes)) ? (g as any).nodes : [];
+      if (!nodes.length) continue;
+
+      // Skip groups that do not mention this hotkey, to avoid force-showing unrelated assets.
+      const groupRelevant = nodes.some((x: any) => x?.savedKeys instanceof Set && x.savedKeys.has(k));
+      if (!groupRelevant) continue;
+      applied = true;
+
+      for (const x of nodes) {
+        const savedKeys = (x as any)?.savedKeys;
+        const hideOnKey = savedKeys instanceof Set && savedKeys.has(k);
+        scene.visibilityOverrides[x.node.key] = {
+          visible: !hideOnKey,
+          source: "hotkey",
+          hotkey: k,
+        };
+      }
+    }
+
+    if (!applied) applyByScan();
+  }
+
+
+
+  private resizeCanvas(): void {
+    // Avoid getBoundingClientRect() in the hot path (can trigger layout).
+    // clientWidth/Height are CSS pixels.
+    const dpr = getRenderDpr();
+    const cssW = this.canvas.clientWidth;
+
+    const cssH = this.canvas.clientHeight;
+    const w = Math.max(1, Math.floor(cssW * dpr));
+    const h = Math.max(1, Math.floor(cssH * dpr));
+    if (this.canvas.width !== w || this.canvas.height !== h) {
+      this.canvas.width = w;
+      this.canvas.height = h;
+      this.cameraDirty = true;
+      this.mouseDirty = true;
+    }
+  }
+
+  private bindResize(): void {
+    if (this.resizeObserver) this.resizeObserver.disconnect();
+    this.resizeObserver = new ResizeObserver(() => {
+      this.resizeCanvas();
+      this.recomputeView();
+    });
+    this.resizeObserver.observe(this.canvas);
+  }
+
+  private getCameraMatrix(): Mat2D {
+    const w = this.canvas.width, h = this.canvas.height;
+    return Mat2D.translate(w / 2, h / 2)
+      .multiply(Mat2D.translate(this.panX, this.panY))
+      .multiply(Mat2D.scale(this.zoom, this.zoom));
+  }
+
+  private recordMouseViewportPosition(viewX: number, viewY: number, source: string): void {
+    // viewX/viewY 是窗口视口坐标（client 坐标系），需要转换到 canvas 内部坐标
+    const rect = this.canvas.getBoundingClientRect();
+    this.recordMouseCssPosition(viewX - rect.left, viewY - rect.top, source);
+  }
+
+  private recordMouseCssPosition(cssX: number, cssY: number, source: string): void {
+    if (!this.scene) return;
+    this.idleThrottle.poke();
+    this.hasMouse = true;
+    const dpr = getRenderDpr();
+    this.mouseCanvas.x = cssX * dpr;
+    this.mouseCanvas.y = cssY * dpr;
+    this.mouseDirty = true;
+
+    if (source !== "windowcore") this.lastLocalMouseTs = performance.now();
+  }
+
+  private syncMouseFollowBindings(): void {
+    // Use local pointer events when possible; WindowCore polling is only ~7Hz by default (see CURSOR_POLL_INTERVAL_MS).
+
+    if (!this.enableMouseFollow || !this.scene) {
+      this.unbindLocalMouseFollow();
+      return;
+    }
+    this.bindLocalMouseFollow();
+  }
+
+  private bindLocalMouseFollow(): void {
+    if (this.localMouseMoveHandler) return;
+
+    this.localMouseMoveHandler = (e: PointerEvent | MouseEvent) => {
+      const anyE = e as any;
+      const ox = Number(anyE.offsetX);
+      const oy = Number(anyE.offsetY);
+      if (Number.isFinite(ox) && Number.isFinite(oy)) {
+        this.recordMouseCssPosition(ox, oy, e.type);
+        return;
+      }
+      // Fallback: compute from client coords
+      const rect = this.canvas.getBoundingClientRect();
+      this.recordMouseCssPosition((e as MouseEvent).clientX - rect.left, (e as MouseEvent).clientY - rect.top, e.type);
+    };
+
+    this.localMouseLeaveHandler = () => {
+      // Keep hasMouse=true (follow can still be driven by WindowCore polling / last known mouse)
+    };
+
+    this.canvas.addEventListener("pointermove", this.localMouseMoveHandler as any, { passive: true });
+    this.canvas.addEventListener("mousemove", this.localMouseMoveHandler as any, { passive: true });
+    this.canvas.addEventListener("mouseleave", this.localMouseLeaveHandler as any, { passive: true });
+  }
+
+  private unbindLocalMouseFollow(): void {
+    if (!this.localMouseMoveHandler) return;
+    this.canvas.removeEventListener("pointermove", this.localMouseMoveHandler as any);
+    this.canvas.removeEventListener("mousemove", this.localMouseMoveHandler as any);
+    if (this.localMouseLeaveHandler) this.canvas.removeEventListener("mouseleave", this.localMouseLeaveHandler as any);
+    this.localMouseMoveHandler = null;
+    this.localMouseLeaveHandler = null;
+  }
+
+  private updateMouseWorld(): void {
+    if (!this.scene || !this.hasMouse) return;
+    if (!this.mouseDirty && !this.cameraDirty) return;
+    const inv = this.getCameraMatrix().invert();
+    const p = inv.applyToPoint(this.mouseCanvas.x, this.mouseCanvas.y);
+    this.mouseWorld.x = p.x;
+    this.mouseWorld.y = p.y;
+    this.mouseDirty = false;
+    this.cameraDirty = false;
+  }
+
+  // Blink system
+  private startAutoBlink(): void {
+    this.stopAutoBlink();
+    if (!this.scene || !this.config) return;
+    this.scene.autoBlink = true;
+    const intervalMs = Math.max(50, Math.floor(getBlinkSpeedSeconds(this.config.features) * 1000));
+    this.scene._autoBlinkTimer = setInterval(() => {
+      if (!this.scene || !this.config) return;
+      const chance = getBlinkChance(this.config.features);
+      if (Math.floor(Math.random() * chance) === 0) this.triggerBlink();
+    }, intervalMs);
+  }
+
+  private stopAutoBlink(): void {
+    if (!this.scene) return;
+    this.scene.autoBlink = false;
+    if (this.scene._autoBlinkTimer) { clearInterval(this.scene._autoBlinkTimer); this.scene._autoBlinkTimer = null; }
+    if (this.scene._blinkTimeout) { clearTimeout(this.scene._blinkTimeout); this.scene._blinkTimeout = null; }
+  }
+
+  private triggerBlink(): void {
+    if (!this.scene || !this.config) return;
+    this.scene.blinking = true;
+    if (this.scene._blinkTimeout) clearTimeout(this.scene._blinkTimeout);
+    const holdMs = Math.max(30, Math.floor(getBlinkHoldSeconds(this.config.features) * 1000));
+    this.scene._blinkTimeout = setTimeout(() => {
+      if (this.scene) this.scene.blinking = false;
+    }, holdMs);
+  }
+
+  // Playback loop
+  private startPlayback(): void {
+    this.stopPlayback();
+    if (!this.scene) return;
+    this.scene.playing = true;
+
+    const maxFpsRaw = Number(this.config?.model?.max_fps) || 60;
+    const maxFps = capFps(maxFpsRaw);
+    const minDeltaMs = 1000 / Math.max(1, clamp(maxFps, 1, 240));
+
+    // 同时限制 Pixi shared ticker 的帧率，避免其他 Pixi 动画消GPU
+    const PIXI = (globalThis as any).PIXI;
+    const sharedTicker = PIXI?.Ticker?.shared;
+    if (sharedTicker && sharedTicker.maxFPS !== maxFps) {
+      sharedTicker.maxFPS = maxFps;
+    }
+
+    const frame = (ts: number) => {
+      if (this.destroyed || !this.scene) return;
+      if (!this.scene.playing) return;
+
+      // idle 降频：无交互时大幅降低渲染频率以节省 GPU
+      if (this.idleThrottle.shouldSkipFrame(ts)) {
+        this.scene._rafId = requestAnimationFrame(frame);
+        return;
+      }
+
+      const last = this.scene._lastTs || 0;
+      if (last && ts - last < minDeltaMs) {
+        this.scene._rafId = requestAnimationFrame(frame);
+        return;
+      }
+
+      const dtSec = last ? clamp((ts - last) / 1000, 0, 0.1) : 1 / maxFps;
+      this.scene._lastTs = ts;
+
+      const shouldDelta = this.scene.model?.settings?.should_delta !== false;
+      // PngRemix 的 tick 按 60Hz 累计（与 Remix/Godot 常见实现一致）。
+      this.scene.tick += shouldDelta ? dtSec * 60 : 1;
+
+      if (this.config) updateGlobalBounce(this.scene, dtSec, this.config.features, this.motionAmpScale, this.motionFrqScale);
+
+      this.updateMouseWorld();
+      stepSceneRuntime(this.scene, dtSec, this.enableMouseFollow, this.mouseWorld, this.hasMouse, this.followAmpScale, this.motionAmpScale, this.motionFrqScale);
+      this.resizeCanvas();
+      renderScene(this.scene, this.renderer, this.zoom, this.panX, this.panY, true);
+
+      this.scene._rafId = requestAnimationFrame(frame);
+    };
+
+    this.scene._rafId = requestAnimationFrame(frame);
+  }
+
+  private stopPlayback(): void {
+    if (!this.scene) return;
+    this.scene.playing = false;
+    if (this.scene._rafId) {
+      cancelAnimationFrame(this.scene._rafId);
+      this.scene._rafId = 0;
+    }
+    this.scene._lastTs = 0;
+  }
+}

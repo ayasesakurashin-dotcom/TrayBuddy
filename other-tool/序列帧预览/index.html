@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title data-i18n="title">Anime Sprite 预览助手</title>
+    <link rel="stylesheet" href="style.css">
+    <script src="../i18n-helper.js"></script>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1 data-i18n="header_title">✨ Anime Sprite Previewer</h1>
+            <p data-i18n="header_subtitle">即时预览序列帧动态效果</p>
+        </header>
+
+        <div class="tabs">
+            <button class="tab-btn active" data-mode="spritesheet" data-i18n="tab_spritesheet">Sprite Sheet 模式</button>
+            <button class="tab-btn" data-mode="png-series" data-i18n="tab_png_series">多 PNG 序列模式</button>
+        </div>
+
+        <main>
+            <div class="upload-section" id="drop-zone">
+                <input type="file" id="file-input" accept="image/*" hidden>
+                <input type="file" id="multi-file-input" accept="image/png" multiple hidden>
+                <div class="upload-content">
+                    <div class="icon">🖼️</div>
+                    <p id="upload-text" data-i18n="upload_text_sheet">点击或拖拽 Sprite Sheet 到这里</p>
+                    <span class="hint" data-i18n="upload_hint">支持 PNG, JPG, WebP</span>
+                </div>
+            </div>
+
+
+            <div class="preview-layout" id="app-content" style="display: none;">
+                <div class="preview-card">
+                    <div id="sprite-view"></div>
+                </div>
+
+                <div class="controls-card">
+                    <div class="control-group" id="grid-settings">
+                        <label data-i18n="grid_settings">网格设置 (行数 × 列数)</label>
+                        <div class="input-row">
+                            <input type="number" id="rows" value="1" min="1" data-i18n-placeholder="rows_placeholder" placeholder="">
+                            <span>×</span>
+                            <input type="number" id="cols" value="5" min="1" data-i18n-placeholder="cols_placeholder" placeholder="">
+                        </div>
+                    </div>
+
+                    <div class="control-group" id="frame-settings">
+                        <label data-i18n="frame_settings">单帧尺寸 (宽 × 高)</label>
+                        <div class="input-row">
+                            <input type="number" id="frame-w" data-i18n-placeholder="width_placeholder" placeholder="">
+                            <span>×</span>
+                            <input type="number" id="frame-h" data-i18n-placeholder="height_placeholder" placeholder="">
+                        </div>
+                    </div>
+
+
+
+                    <div class="control-group">
+                        <label><span data-i18n="fps_label" data-i18n-n="10">播放速度 (FPS: 10)</span></label>
+                        <input type="range" id="fps" min="1" max="60" value="10">
+                    </div>
+
+                    <div class="control-group">
+                        <label data-i18n="playback_mode">播放模式</label>
+                        <div class="direction-btns">
+                            <button id="forward-btn" class="direction-btn active" data-i18n="forward">正序 ▶</button>
+                            <button id="reverse-btn" class="direction-btn" data-i18n="reverse">倒序 ◀</button>
+                        </div>
+                        <div class="direction-btns" style="margin-top: 8px;">
+                            <button id="pingpong-btn" class="direction-btn" data-i18n="pingpong">乒乓 ▶◀</button>
+                            <button id="pingpong-reverse-btn" class="direction-btn" data-i18n="pingpong_reverse">乒乓 ◀▶</button>
+                        </div>
+                    </div>
+
+                    <div class="control-group">
+                        <label data-i18n="current_status">当前状态</label>
+                        <div class="status-info">
+                            <span id="frame-size-container" data-i18n="frame_size_label" data-i18n-size="260 x 300">帧大小: 260 x 300 px</span>
+                        </div>
+                    </div>
+
+                    <button id="reset-btn" class="secondary-btn" data-i18n="reset_btn">更换图片</button>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>

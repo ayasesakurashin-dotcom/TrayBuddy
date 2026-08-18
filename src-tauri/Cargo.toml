@@ -1,0 +1,97 @@
+[package]
+name = "traybuddy"
+version = "0.2.0"
+description = ""
+authors = ["cafel"]
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(has_embedded_sbuddy_crypto)'] }
+
+[lib]
+# The `_lib` suffix may seem redundant but it is necessary
+# to make the lib name unique and wouldn't conflict with the bin name.
+# This seems to be only an issue on Windows, see https://github.com/rust-lang/cargo/issues/8519
+name = "traybuddy_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = ["protocol-asset", "tray-icon", "image-ico", "image-png"] }
+tauri-plugin-opener = "2"
+tauri-plugin-dialog = "2"
+tauri-plugin-autostart = "2"
+tauri-plugin-single-instance = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+dunce = "1.0"
+getrandom = "0.2"
+chrono = "0.4"
+lazy_static = "1.4"
+zip = "2.3.0"
+reqwest = { version = "0.12", features = ["json", "blocking"] }
+base64 = "0.22"
+image = { version = "0.25", default-features = false, features = ["png", "bmp"] }
+regex = "1"
+raw-window-handle = "0.6"
+# DSH 集成：WebSocket 事件流（任务完成检测）
+tokio-tungstenite = "0.24"
+futures-util = "0.3"
+
+# Windows 媒体监听和鼠标位置
+[target.'cfg(windows)'.dependencies]
+windows = { version = "0.58", features = [
+    # GSMTC (媒体会话控制)
+    "Media_Control",
+    "Foundation",
+    "Foundation_Collections",
+    # Core Audio API (音频会话枚举)
+    "Win32_Media_Audio",
+    "Win32_Media_Audio_Endpoints",  # IAudioMeterInformation
+    "Win32_System_Com",
+    "Win32_System_Ole",
+    # 进程信息
+    "Win32_System_Threading",
+    "Win32_System_Diagnostics_ToolHelp",
+    "Win32_System_ProcessStatus",
+    "Win32_Foundation",
+    # 鼠标位置
+    "Win32_UI_WindowsAndMessaging",
+    "Win32_UI_Input_KeyboardAndMouse",
+    # 钩子 Hook (SetWinEventHook)
+    "Win32_UI_Accessibility",
+    # Shell API (SHQueryUserNotificationState)
+    "Win32_UI_Shell",
+    # 显示器信息 (GDI)
+    "Win32_Graphics_Gdi",
+    "Win32_Graphics_Dwm",
+    # WTS 会话 API (检测锁屏/解锁)
+    "Win32_System_RemoteDesktop",
+    # 库加载 API (GetModuleHandle)
+    "Win32_System_LibraryLoader",
+] }
+tokio = { version = "1", features = ["rt-multi-thread", "sync", "time", "macros"] }
+
+# ========================================================================= #
+# Release 优化配置 - 减少打包体积和提升运行性能
+# ========================================================================= #
+
+[profile.release]
+# 启用 LTO (Link-Time Optimization) 进行跨模块优化
+lto = true
+# 单 codegen unit 产生更小更优化的二进制
+codegen-units = 1
+# 优化级别: s = 优化体积, z = 更激进的体积优化, 3 = 最大性能
+opt-level = "s"
+# 移除 debug 符号
+strip = true
+# 启用 panic abort 减少 unwind 代码体积
+panic = "abort"
+
+[dev-dependencies]
+tempfile = "3"
+

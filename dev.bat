@@ -1,0 +1,320 @@
+@echo off
+setlocal EnableExtensions DisableDelayedExpansion
+
+:: Ensure UTF-8 for Chinese path/args
+chcp 65001 >nul
+
+:: 检查管理员权限（使用 fltmc 检测，避免 net session 在部分系统下失效）
+>nul 2>&1 "%SystemRoot%\System32\fltmc.exe"
+if errorlevel 1 goto :_tb_elevate
+
+goto :_tb_got_admin
+
+:_tb_elevate
+set "TB_SELF=%~f0"
+set "TB_CWD=%CD%"
+set "TB_ARGS=%*"
+powershell -NoProfile -ExecutionPolicy Bypass -Command "$bat=$env:TB_SELF; $cwd=$env:TB_CWD; $a=$env:TB_ARGS; $q=[char]34; $cmd=$q+$bat+$q; if($a){$cmd+=' '+$a}; Start-Process -FilePath 'cmd.exe' -WorkingDirectory $cwd -ArgumentList @('/d','/c',$cmd) -Verb RunAs"
+exit /b
+
+:_tb_got_admin
+
+
+cd /d "%~dp0"
+
+:: 检查是否已有 traybuddy.exe 在运行
+tasklist /FI "IMAGENAME eq traybuddy.exe" 2>nul | find /I "traybuddy.exe" >nul
+if not errorlevel 1 (
+    echo.
+    echo [WARNING] traybuddy.exe is already running!
+    echo Please close the existing instance before starting dev server.
+    echo.
+    pause
+    exit /b 1
+)
+
+:: 删除开发模式的 mods 目录（避免括号块，兼容路径中的 ()）
+if not exist "%~dp0src-tauri\target\debug\mods" goto :_tb_after_clean
+
+echo Cleaning debug mods directory...
+rmdir /s /q "%~dp0src-tauri\target\debug\mods"
+
+:_tb_after_clean
+
+:: ================================================================
+:: mods 文件夹：跳过，不进行任何打包
+:: ================================================================
+
+:: 确保输出目录存在
+if not exist "%~dp0tbuddy_release" mkdir "%~dp0tbuddy_release"
+if not exist "%~dp0tbuddy_test" mkdir "%~dp0tbuddy_test"
+if not exist "%~dp0tbuddy_secure" mkdir "%~dp0tbuddy_secure"
+if not exist "%~dp0sbuddy_release" mkdir "%~dp0sbuddy_release"
+if not exist "%~dp0sbuddy_test" mkdir "%~dp0sbuddy_test"
+if not exist "%~dp0sbuddy_secure" mkdir "%~dp0sbuddy_secure"
+
+:: ================================================================
+:: mods_release -> tbuddy_release/ -> sbuddy_release/
+:: ================================================================
+echo Packing mods_release to .tbuddy files...
+powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0pack-mods.ps1" -ModsDir "%~dp0mods_release" -OutputDir "%~dp0tbuddy_release"
+if errorlevel 1 goto :_tb_pack_failed
+
+:: ================================================================
+:: mods_test -> tbuddy_test/ -> sbuddy_test/
+:: ================================================================
+echo Packing mods_test to .tbuddy files...
+powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0pack-mods.ps1" -ModsDir "%~dp0mods_test" -OutputDir "%~dp0tbuddy_test"
+if errorlevel 1 goto :_tb_pack_failed
+
+:: ================================================================
+:: mods_secure -> tbuddy_secure/ -> sbuddy_secure/
+:: ================================================================
+echo Packing mods_secure to .tbuddy files...
+powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0pack-mods.ps1" -ModsDir "%~dp0mods_secure" -OutputDir "%~dp0tbuddy_secure"
+if errorlevel 1 goto :_tb_pack_failed
+
+:: ================================================================
+:: sbuddy 加密：release 和 test 分别处理
+:: ================================================================
+
+set "TB_SBUDDY_CRYPTO="
+if exist "%~dp0src-tauri\sbuddy-crypto.exe" set "TB_SBUDDY_CRYPTO=%~dp0src-tauri\sbuddy-crypto.exe"
+if not defined TB_SBUDDY_CRYPTO if exist "%~dp0sbuddy-crypto.exe" set "TB_SBUDDY_CRYPTO=%~dp0sbuddy-crypto.exe"
+if not defined TB_SBUDDY_CRYPTO (
+  where sbuddy-crypto.exe >nul 2>&1
+  if not errorlevel 1 set "TB_SBUDDY_CRYPTO=sbuddy-crypto.exe"
+)
+
+if not defined TB_SBUDDY_CRYPTO (
+  echo.
+  echo [WARN] sbuddy-crypto.exe not found, skipping .sbuddy packing step.
+  goto :_tb_after_sbuddy
+)
+
+echo Using: %TB_SBUDDY_CRYPTO%
+
+:: --- sbuddy_release ---
+echo Packing .tbuddy to .sbuddy files (release)...
+call :_tb_encrypt_sbuddy "%~dp0tbuddy_release" "%~dp0sbuddy_release"
+if errorlevel 1 goto :_tb_sbuddy_failed
+
+:: --- sbuddy_test ---
+echo Packing .tbuddy to .sbuddy files (test)...
+call :_tb_encrypt_sbuddy "%~dp0tbuddy_test" "%~dp0sbuddy_test"
+if errorlevel 1 goto :_tb_sbuddy_failed
+
+:: --- sbuddy_secure ---
+echo Packing .tbuddy to .sbuddy files (secure)...
+call :_tb_encrypt_sbuddy "%~dp0tbuddy_secure" "%~dp0sbuddy_secure"
+if errorlevel 1 goto :_tb_sbuddy_failed
+
+:_tb_after_sbuddy
+
+:: ================================================================
+:: Node.js / pnpm 环境检查与自动安装
+:: ================================================================
+
+:: 检查 Node.js 是否可用
+where node >nul 2>&1
+if errorlevel 1 goto :_tb_install_node
+node --version >nul 2>&1
+if errorlevel 1 goto :_tb_install_node
+goto :_tb_node_ready
+
+:_tb_install_node
+echo.
+echo [INFO] Node.js not found. Installing Node.js automatically...
+echo.
+
+:: 使用 winget 安装 Node.js LTS（Windows 10+ 自带 winget）
+where winget >nul 2>&1
+if errorlevel 1 goto :_tb_node_no_winget
+
+echo Installing Node.js via winget...
+winget install OpenJS.NodeJS.LTS --accept-source-agreements --accept-package-agreements
+if errorlevel 1 goto :_tb_node_install_failed
+
+:: 刷新当前会话的 PATH（winget 安装后 PATH 不会自动在当前 cmd 生效）
+call :_tb_refresh_path
+goto :_tb_verify_node
+
+:_tb_node_no_winget
+:: winget 不可用，用 PowerShell 下载 Node.js MSI 安装
+echo winget not available, downloading Node.js installer via PowerShell...
+set "TB_NODE_INSTALLER=%TEMP%\node-lts-install.msi"
+powershell -NoProfile -ExecutionPolicy Bypass -Command ^
+  "$ProgressPreference='SilentlyContinue'; " ^
+  "try { " ^
+  "  $url='https://nodejs.org/dist/v22.14.0/node-v22.14.0-x64.msi'; " ^
+  "  Write-Host 'Downloading Node.js v22.14.0 LTS...'; " ^
+  "  Invoke-WebRequest -Uri $url -OutFile '%TB_NODE_INSTALLER%' -UseBasicParsing; " ^
+  "  Write-Host 'Download complete. Installing...' " ^
+  "} catch { " ^
+  "  Write-Host '[ERROR] Download failed:' $_.Exception.Message; " ^
+  "  exit 1 " ^
+  "}"
+if errorlevel 1 goto :_tb_node_install_failed
+
+:: 静默安装 Node.js MSI
+echo Running Node.js installer (silent)...
+msiexec /i "%TB_NODE_INSTALLER%" /qn /norestart
+if errorlevel 1 (
+    echo [WARN] Silent install returned error, trying passive mode...
+    msiexec /i "%TB_NODE_INSTALLER%" /passive /norestart
+    if errorlevel 1 goto :_tb_node_install_failed
+)
+del /q "%TB_NODE_INSTALLER%" >nul 2>&1
+
+:: 刷新 PATH
+call :_tb_refresh_path
+
+:_tb_verify_node
+:: 验证安装成功
+where node >nul 2>&1
+if errorlevel 1 (
+    echo.
+    echo [ERROR] Node.js installation succeeded but 'node' is still not in PATH.
+    echo Please restart your terminal or computer, then re-run dev.bat.
+    pause
+    exit /b 1
+)
+echo.
+for /f "tokens=*" %%v in ('node --version') do echo [OK] Node.js %%v installed successfully.
+echo.
+goto :_tb_node_ready
+
+:_tb_node_install_failed
+echo.
+echo [ERROR] Failed to install Node.js automatically.
+echo Please install Node.js manually from: https://nodejs.org/
+echo Then re-run dev.bat.
+pause
+exit /b 1
+
+:_tb_node_ready
+
+:: 检查 pnpm 是否可用，没有则通过 corepack 或 npm 安装
+where pnpm >nul 2>&1
+if not errorlevel 1 goto :_tb_pnpm_ready
+
+echo.
+echo [INFO] pnpm not found. Installing pnpm...
+:: 优先尝试 corepack（Node.js 16.9+ 自带）
+where corepack >nul 2>&1
+if errorlevel 1 goto :_tb_pnpm_via_npm
+
+echo Enabling pnpm via corepack...
+call corepack enable
+call corepack prepare pnpm@latest --activate >nul 2>&1
+where pnpm >nul 2>&1
+if not errorlevel 1 goto :_tb_pnpm_ready
+
+:_tb_pnpm_via_npm
+echo Installing pnpm via npm...
+call npm install -g pnpm
+if errorlevel 1 (
+    echo.
+    echo [ERROR] Failed to install pnpm!
+    echo Please run: npm install -g pnpm
+    pause
+    exit /b 1
+)
+
+:_tb_pnpm_ready
+for /f "tokens=*" %%v in ('pnpm --version') do echo [OK] pnpm v%%v
+
+:: 确保 node_modules 存在（安装前端依赖，包括 @tauri-apps/cli）
+if not exist "%~dp0node_modules\" (
+    echo node_modules not found, running pnpm install...
+    call pnpm install
+    if errorlevel 1 (
+        echo.
+        echo [ERROR] pnpm install failed!
+        pause
+        exit /b 1
+    )
+)
+
+echo Starting Tauri dev server...
+call pnpm tauri dev --verbose
+@REM pnpm tauri dev --verbose > tauri-dev.log 2>&1
+@REM if %errorlevel% neq 0 (
+@REM     echo.
+@REM     echo [ERROR] Build failed! Check tauri-dev.log for details.
+@REM     pause
+@REM     exit /b %errorlevel%
+@REM )
+@REM echo Build successful! Log saved to tauri-dev.log.
+pause
+exit /b 0
+
+:: ================================================================
+:: 子过程：将指定 tbuddy 目录下的 .tbuddy 文件加密为 .sbuddy
+:: 参数: %1 = tbuddy 源目录, %2 = sbuddy 输出目录
+:: ================================================================
+:_tb_encrypt_sbuddy
+setlocal EnableDelayedExpansion
+set "TB_TBUDDY_IN=%~1"
+set "TB_SBUDDY_OUT=%~2"
+
+if not exist "%TB_TBUDDY_IN%" (
+  echo.
+  echo [WARN] tbuddy directory not found: "%TB_TBUDDY_IN%", skipping.
+  endlocal
+  exit /b 0
+)
+
+if not exist "%TB_SBUDDY_OUT%" mkdir "%TB_SBUDDY_OUT%" >nul 2>&1
+del /q "%TB_SBUDDY_OUT%\*.sbuddy" >nul 2>&1
+
+set /a TB_SBUDDY_COUNT=0
+for %%f in ("%TB_TBUDDY_IN%\*.tbuddy") do (
+  if exist "%%~ff" (
+    set "TB_IN=%%~ff"
+    set "TB_OUT=%TB_SBUDDY_OUT%\%%~nf.sbuddy"
+    echo   encrypt: "%%~nxf" ^> "%%~nf.sbuddy"
+    "%TB_SBUDDY_CRYPTO%" encrypt < "!TB_IN!" > "!TB_OUT!"
+    if errorlevel 1 (
+      endlocal
+      echo.
+      echo [ERROR] Failed to generate sbuddy: "%%~nxf"
+      exit /b 1
+    )
+    set /a TB_SBUDDY_COUNT+=1
+  )
+)
+
+if !TB_SBUDDY_COUNT! LEQ 0 (
+  echo   [WARN] No .tbuddy files found in "%TB_TBUDDY_IN%"
+)
+
+endlocal
+exit /b 0
+
+:: ================================================================
+:: 子过程：刷新当前 CMD 会话的 PATH 环境变量
+:: 安装 Node.js 后，新的 PATH 不会自动在当前会话生效
+:: ================================================================
+:_tb_refresh_path
+echo Refreshing PATH...
+for /f "tokens=2*" %%A in ('reg query "HKLM\SYSTEM\CurrentControlSet\Control\Session Manager\Environment" /v Path 2^>nul') do set "TB_SYS_PATH=%%B"
+for /f "tokens=2*" %%A in ('reg query "HKCU\Environment" /v Path 2^>nul') do set "TB_USR_PATH=%%B"
+if defined TB_SYS_PATH if defined TB_USR_PATH (
+    set "PATH=%TB_SYS_PATH%;%TB_USR_PATH%"
+) else if defined TB_SYS_PATH (
+    set "PATH=%TB_SYS_PATH%"
+)
+exit /b 0
+
+:_tb_pack_failed
+echo.
+echo [ERROR] Packing mods failed!
+pause
+exit /b 1
+
+:_tb_sbuddy_failed
+echo.
+echo [ERROR] Packing sbuddy failed!
+pause
+exit /b 1

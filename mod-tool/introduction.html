@@ -1,0 +1,770 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title data-i18n="introduction_title">TrayBuddy Mod Editor 说明</title>
+  <link rel="stylesheet" href="introduction-styles.css">
+</head>
+<body>
+  <!-- 导航栏 -->
+  <nav class="navbar">
+    <a href="index.html" class="navbar-brand">
+      <span>🎨</span>
+      <span data-i18n="nav_brand">TrayBuddy Mod Editor</span>
+    </a>
+
+    <div class="navbar-right">
+
+      <div class="lang-switcher">
+        <button class="lang-btn" data-lang="zh" data-i18n="lang_zh">ZH</button>
+        <button class="lang-btn" data-lang="en" data-i18n="lang_en">EN</button>
+        <button class="lang-btn" data-lang="ja" data-i18n="lang_ja">JA</button>
+      </div>
+
+    </div>
+  </nav>
+
+  <!-- 侧边目录 -->
+  <aside class="sidebar">
+    <div class="sidebar-title" data-i18n="sidebar_toc">目录</div>
+    <ul class="sidebar-nav">
+      <li><a href="#intro" data-i18n="toc_intro">简介</a></li>
+      <li><a href="#requirements" data-i18n="toc_requirements">环境要求</a></li>
+      <li><a href="#quickstart" data-i18n="toc_quickstart">快速开始</a></li>
+      <li><a href="#manifest" data-i18n="toc_manifest">基础信息配置</a></li>
+      <li><a href="#states-triggers" data-i18n="toc_states_triggers">状态和触发</a></li>
+      <li><a href="#bubble" data-i18n="toc_bubble">气泡样式配置</a></li>
+      <li><a href="#aitools" data-i18n="toc_aitools">AI 工具配置</a></li>
+      <li><a href="#assets" data-i18n="toc_assets">动画管理</a></li>
+      <li><a href="#live2d" data-i18n="toc_live2d">Live2D 动画</a></li>
+      <li><a href="#pngremix" data-i18n="toc_pngremix">PngRemix 动画</a></li>
+      <li><a href="#threed" data-i18n="toc_threed">3D 动画</a></li>
+      <li><a href="#texts" data-i18n="toc_texts">多语言文本</a></li>
+      <li><a href="#audio" data-i18n="toc_audio">多语言音频</a></li>
+      <li><a href="#save-export" data-i18n="toc_save_export">保存与导出</a></li>
+      <li><a href="#structure" data-i18n="toc_structure">Mod 目录结构</a></li>
+      <li><a href="#faq" data-i18n="toc_faq">常见问题</a></li>
+    </ul>
+  </aside>
+
+  <!-- 主内容 -->
+  <main class="main-content">
+    <h1 data-i18n="page_title">📖 Mod Editor 使用教程</h1>
+    <p class="lead" data-i18n="page_lead">本教程将指导你如何使用 TrayBuddy Mod Editor 创建和编辑角色 Mod 包。</p>
+
+    <!-- 简介 -->
+    <section id="intro">
+      <h2 data-i18n="section_intro">简介</h2>
+      <p data-i18n="intro_desc">TrayBuddy Mod Editor 是一个可视化的 Mod 编辑工具，让你更直观地管理角色的各种数据。</p>
+      
+      <div class="feature-grid">
+        <div class="feature-card">
+          <div class="feature-icon">📋</div>
+          <div class="feature-title" data-i18n="feature_manifest">基础信息</div>
+          <div class="feature-desc" data-i18n="feature_manifest_desc">配置 Mod ID、版本、作者、角色渲染参数、Mod 数据面板等</div>
+        </div>
+        <div class="feature-card">
+          <div class="feature-icon">🎭</div>
+          <div class="feature-title" data-i18n="feature_states">状态和触发</div>
+          <div class="feature-desc" data-i18n="feature_states_desc">管理动作状态、对话分支、事件响应逻辑以及数据计数器</div>
+        </div>
+        <div class="feature-card">
+          <div class="feature-icon">💬</div>
+          <div class="feature-title" data-i18n="feature_bubble">气泡样式</div>
+          <div class="feature-desc" data-i18n="feature_bubble_desc">自定义对话气泡样式，支持实时预览效果</div>
+        </div>
+        <div class="feature-card">
+          <div class="feature-icon">🤖</div>
+          <div class="feature-title" data-i18n="feature_aitools">AI 工具</div>
+          <div class="feature-desc" data-i18n="feature_aitools_desc">配置 AI 截图识别工具，自动识别游戏画面触发状态</div>
+        </div>
+        <div class="feature-card">
+          <div class="feature-icon">🖼️</div>
+          <div class="feature-title" data-i18n="feature_assets">动画</div>
+          <div class="feature-desc" data-i18n="feature_assets_desc">管理序列帧动画和静态图片配置</div>
+        </div>
+        <div class="feature-card">
+          <div class="feature-icon">📝</div>
+          <div class="feature-title" data-i18n="feature_texts">文本管理</div>
+          <div class="feature-desc" data-i18n="feature_texts_desc">多语言文本编辑，支持简易 Markdown</div>
+        </div>
+        <div class="feature-card">
+          <div class="feature-icon">🔊</div>
+          <div class="feature-title" data-i18n="feature_audio">音频管理</div>
+          <div class="feature-desc" data-i18n="feature_audio_desc">管理多语言语音资源配置</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 环境要求 -->
+    <section id="requirements">
+      <h2 data-i18n="section_requirements">环境要求</h2>
+      <div class="callout callout-warning">
+        <div class="callout-title" data-i18n="callout_browser_title">⚠️ 浏览器要求</div>
+        <p data-i18n="callout_browser_desc">请使用 Chrome 86+ 或 Edge 86+ 浏览器，其他浏览器暂不支持文件夹读写功能。</p>
+      </div>
+      <p data-i18n="requirements_run_desc">推荐运行方式：双击 mod-tool/打开-mod编辑器.bat 启动本地服务器（会自动打开浏览器），然后访问 http://127.0.0.1:4174/</p>
+    </section>
+
+    <!-- 快速开始 -->
+    <section id="quickstart">
+      <h2 data-i18n="section_quickstart">快速开始</h2>
+      
+      <h3 data-i18n="section_open_folder">打开现有 Mod 文件夹</h3>
+      <div class="steps">
+        <div class="step">
+          <div class="step-title" data-i18n="step_click_open">点击「打开 Mod」下拉菜单</div>
+          <p data-i18n="step_click_open_desc">在工具栏点击「📂 打开 Mod」按钮，选择「📂 打开文件夹」</p>
+        </div>
+        <div class="step">
+          <div class="step-title" data-i18n="step_select_folder">选择 Mod 文件夹</div>
+          <p data-i18n="step_select_folder_desc">在弹出的选择器中，选择一个 Mod 文件夹（如 ema）</p>
+        </div>
+        <div class="step">
+          <div class="step-title" data-i18n="step_grant_permission">授予访问权限</div>
+          <p data-i18n="step_grant_permission_desc">浏览器会询问是否允许读写该文件夹，点击「允许」</p>
+        </div>
+      </div>
+
+      <h3 data-i18n="section_open_tbuddy">打开 .tbuddy 文件</h3>
+      <p data-i18n="tbuddy_desc">.tbuddy 是 TrayBuddy 专用的 Mod 包格式，本质上是一个 ZIP 压缩包。点击「📦 打开 .tbuddy」选择文件后自动加载。</p>
+
+      <h3 data-i18n="section_create_mod">创建新 Mod</h3>
+      <p data-i18n="create_mod_desc">点击「➕ 新建 Mod」，填写 Mod ID、名称和作者，选择 Mod 类型（序列帧动画、Live2D、PngRemix 或 3D 模型），系统会创建一个包含默认配置的新 Mod。</p>
+    </section>
+
+    <!-- 基础信息配置 -->
+    <section id="manifest">
+      <h2 data-i18n="section_manifest">📋 基础信息配置</h2>
+      <p data-i18n="manifest_desc">在「基础信息」标签页中配置 Mod 的核心参数。</p>
+
+      <h4 data-i18n="section_mod_info">Mod 信息</h4>
+      <table>
+        <tr><th data-i18n="table_field">字段</th><th data-i18n="table_desc">说明</th></tr>
+        <tr><td data-i18n="field_mod_id">Mod ID</td><td data-i18n="field_mod_id_desc">唯一标识符，只允许英文和数字</td></tr>
+        <tr><td data-i18n="field_version">版本号</td><td data-i18n="field_version_desc">Mod 版本</td></tr>
+        <tr><td data-i18n="field_author">作者</td><td data-i18n="field_author_desc">创作者名称</td></tr>
+        <tr><td data-i18n="field_default_audio">默认音频语言</td><td data-i18n="field_default_audio_desc">找不到对应语言音频时的备选</td></tr>
+        <tr><td data-i18n="field_default_text">默认文本语言</td><td data-i18n="field_default_text_desc">找不到对应语言文本时的备选</td></tr>
+      </table>
+
+
+      <h4 data-i18n="section_char_config_introduction">角色配置</h4>
+      <p data-i18n="char_config_desc">配置角色渲染相关参数（manifest.character）。</p>
+      <table>
+        <tr><th data-i18n="table_field">字段</th><th data-i18n="table_desc">说明</th></tr>
+        <tr><td data-i18n="field_char_z_offset">z_offset</td><td data-i18n="char_z_offset_desc">角色画布的渲染层级偏移</td></tr>
+        <tr><td data-i18n="field_char_canvas_fit">canvas_fit_preference</td><td data-i18n="char_canvas_fit_desc">角色 Canvas 显示适配：short(短边优先)/long(长边优先)/legacy(旧版按高度缩放)</td></tr>
+      </table>
+
+
+      <h4 data-i18n="section_border_config_introduction">边框配置</h4>
+      <p data-i18n="border_config_desc">配置边框开关、边框动画与层级（manifest.border）。</p>
+      <table>
+        <tr><th data-i18n="table_field">字段</th><th data-i18n="table_desc">说明</th></tr>
+        <tr><td data-i18n="field_border_enable">enable</td><td data-i18n="border_enable_desc">是否启用边框</td></tr>
+        <tr><td data-i18n="field_border_anima">anima</td><td data-i18n="border_anima_desc">边框使用的动画名称（从动画资源中选择）</td></tr>
+        <tr><td data-i18n="field_border_z_offset">z_offset</td><td data-i18n="border_z_offset_desc">边框画布的渲染层级偏移</td></tr>
+      </table>
+
+
+      <h4 data-i18n="section_mod_data">Mod 数据面板</h4>
+      <p data-i18n="mod_data_desc">可在角色窗口左上角显示自定义数据（如好感度）。配置 show_mod_data_panel 开关和 mod_data_default_int 默认值。</p>
+
+      <h4 data-i18n="section_texture_downsample">贴图降采样</h4>
+      <p data-i18n="texture_downsample_desc">通过 manifest.enable_texture_downsample 控制是否允许贴图在解码阶段降采样/封顶（对 Live2D/PngRemix 生效）。开启可降低内存占用，关闭可保留原始清晰度。</p>
+      <p data-i18n="texture_downsample_start_dim_desc">通过 manifest.texture_downsample_start_dim 设置"开始降采样的贴图尺寸阈值"（像素；最长边）。0 表示不限制；>0 表示仅当贴图尺寸达到阈值时才允许触发降采样。</p>
+
+
+      <h4 data-i18n="section_global_keyboard">全局键盘监听</h4>
+      <p data-i18n="global_keyboard_desc">配置 global_keyboard 为 true 后，即使动画窗口未获得焦点，也能触发 keydown 事件。适用于需要实时响应键盘输入的桌面宠物模型。</p>
+
+      <h4 data-i18n="section_global_mouse">全局鼠标监听</h4>
+      <p data-i18n="global_mouse_desc">配置 global_mouse 为 true 后，鼠标点击任意位置都可触发 global_click / global_right_click 事件，无需点击在角色身上。</p>
+
+      <h4 data-i18n="section_pngremix_scales_intro">PngRemix 参数缩放</h4>
+      <p data-i18n="pngremix_scales_desc">仅对 mod_type=pngremix 生效，用于整体压住“鼠标跟随/摆动”的幅度与频率（默认 1.0）。</p>
+      <ul>
+        <li><code>pngremix_follow_amp_scale</code>：<span data-i18n="pngremix_follow_amp_scale_desc">鼠标跟随幅度缩放（建议 0.0~2.0）</span></li>
+        <li><code>pngremix_motion_amp_scale</code>：<span data-i18n="pngremix_motion_amp_scale_desc">摆动幅度缩放（影响 xAmp/yAmp、wiggle_amp、stretchAmount、rdragStr 等）</span></li>
+        <li><code>pngremix_motion_frq_scale</code>：<span data-i18n="pngremix_motion_frq_scale_desc">摆动频率缩放（影响 xFrq/yFrq、wiggle_freq、rot_frq 等）</span></li>
+      </ul>
+
+      <h4 data-i18n="section_preview_icon">预览图与图标</h4>
+      <p data-i18n="preview_icon_desc">预览图支持 PNG/JPG/JPEG/WebP 格式，图标支持 ICO 格式。</p>
+
+    </section>
+
+    <!-- 状态和触发 -->
+    <section id="states-triggers">
+      <h2 data-i18n="section_states_triggers">🎭 状态和触发</h2>
+      
+      <h3 data-i18n="section_important_states">重要状态</h3>
+      <p data-i18n="important_states_desc">系统内置的关键状态：</p>
+      <table>
+        <tr><th data-i18n="table_state_name">状态名称</th><th data-i18n="table_persistent">持久</th><th data-i18n="table_desc">说明</th></tr>
+        <tr><td data-i18n="state_name_idle">idle</td><td>✅</td><td data-i18n="state_idle_desc">默认空闲状态，必须存在</td></tr>
+        <tr><td data-i18n="state_name_silence">silence</td><td>✅</td><td data-i18n="state_silence_desc">静默/免打扰状态</td></tr>
+        <tr><td data-i18n="state_name_silence_start">silence_start</td><td>❌</td><td data-i18n="state_silence_start_desc">进入免打扰时播放一次，然后跳转到 silence</td></tr>
+        <tr><td data-i18n="state_name_silence_end">silence_end</td><td>❌</td><td data-i18n="state_silence_end_desc">退出免打扰时播放一次，然后跳转到 idle</td></tr>
+        <tr><td data-i18n="state_name_dragging">dragging</td><td>✅</td><td data-i18n="state_dragging_desc">拖动中状态（持续）</td></tr>
+        <tr><td data-i18n="state_name_drag_start">drag_start</td><td>❌</td><td data-i18n="state_drag_start_desc">开始拖动时播放一次，然后跳转到 dragging</td></tr>
+        <tr><td data-i18n="state_name_drag_end">drag_end</td><td>❌</td><td data-i18n="state_drag_end_desc">结束拖动时播放一次，然后跳转到 idle（或后续由系统进入 music）</td></tr>
+        <tr><td data-i18n="state_name_music">music</td><td>✅</td><td data-i18n="state_music_desc">音乐播放状态</td></tr>
+        <tr><td data-i18n="state_name_music_start">music_start</td><td>❌</td><td data-i18n="state_music_start_desc">开始听歌时播放一次，然后跳转到 music</td></tr>
+        <tr><td data-i18n="state_name_music_end">music_end</td><td>❌</td><td data-i18n="state_music_end_desc">停止听歌时播放一次，然后跳转到 idle</td></tr>
+        <tr><td data-i18n="state_name_birthday">birthday</td><td>❌</td><td data-i18n="state_birthday_desc">生日事件状态（通常播放一次）</td></tr>
+        <tr><td data-i18n="state_name_firstday">firstday</td><td>❌</td><td data-i18n="state_firstday_desc">首次启动事件状态（通常播放一次）</td></tr>
+      </table>
+
+
+      <h3 data-i18n="section_state_fields">状态字段</h3>
+      <table>
+        <tr><th data-i18n="table_field">字段</th><th data-i18n="table_desc">说明</th></tr>
+        <tr><td data-i18n="field_state_name">状态名称</td><td data-i18n="field_state_name_desc">唯一标识符</td></tr>
+        <tr><td data-i18n="field_persistent">是否持久</td><td data-i18n="field_persistent_desc">持久状态循环播放</td></tr>
+        <tr><td data-i18n="field_anima">关联动画</td><td data-i18n="field_anima_desc">要播放的动画</td></tr>
+        <tr><td data-i18n="field_audio">关联音频</td><td data-i18n="field_audio_desc">音频资源名称</td></tr>
+        <tr><td data-i18n="field_text">关联文本</td><td data-i18n="field_text_desc">显示为气泡对话</td></tr>
+        <tr><td data-i18n="field_priority">优先级</td><td data-i18n="field_priority_desc">数值越大优先级越高</td></tr>
+        <tr><td data-i18n="field_next_state">下一状态</td><td data-i18n="field_next_state_desc">播放完成后跳转</td></tr>
+        <tr><td data-i18n="field_trigger_time">触发间隔</td><td data-i18n="field_trigger_time_desc">定时触发检查间隔（秒），0 表示不启用</td></tr>
+        <tr><td data-i18n="field_trigger_rate">触发概率</td><td data-i18n="field_trigger_rate_desc">每次检查的触发概率（编辑器以百分比显示，保存到 manifest 为 0-1）</td></tr>
+        <tr><td data-i18n="field_trigger_counter_start">触发计数起点</td><td data-i18n="field_trigger_counter_start_desc">仅当当前 ModData.value 落在 [起点, 终点] 区间内时，该状态才允许触发</td></tr>
+        <tr><td data-i18n="field_trigger_counter_end">触发计数终点</td><td data-i18n="field_trigger_counter_end_desc">仅当当前 ModData.value 落在 [起点, 终点] 区间内时，该状态才允许触发</td></tr>
+        <tr><td data-i18n="field_trigger_temp_start">气温触发起点</td><td data-i18n="field_trigger_temp_start_desc">仅当当前 environment.temperature (°C) 落在 [起点, 终点] 区间内时，该状态才允许触发</td></tr>
+        <tr><td data-i18n="field_trigger_temp_end">气温触发终点</td><td data-i18n="field_trigger_temp_end_desc">仅当当前 environment.temperature (°C) 落在 [起点, 终点] 区间内时，该状态才允许触发</td></tr>
+        <tr><td data-i18n="field_trigger_uptime">启动时长触发</td><td data-i18n="field_trigger_uptime_desc">仅当当前距离程序启动已过分钟数 >= trigger_uptime 时，该状态才允许触发（分钟；0 表示不限制）</td></tr>
+        <tr><td data-i18n="field_trigger_weather">触发天气</td><td data-i18n="field_trigger_weather_desc">仅当当前 environment.condition（或 condition_code）与 trigger_weather 任意一项精确匹配时，该状态才允许触发（数组）</td></tr>
+        <tr><td data-i18n="field_date_start">日期范围起点</td><td data-i18n="field_date_start_desc">环境约束 - 日期范围 (MM-DD)，用于节日特效（如 12-25 圣诞节）</td></tr>
+        <tr><td data-i18n="field_date_end">日期范围终点</td><td data-i18n="field_date_end_desc">环境约束 - 日期范围终点 (MM-DD)</td></tr>
+        <tr><td data-i18n="field_time_start">时间范围起点</td><td data-i18n="field_time_start_desc">环境约束 - 时间范围 (HH:MM)，用于早晚问候（如 06:00 - 09:00）</td></tr>
+        <tr><td data-i18n="field_time_end">时间范围终点</td><td data-i18n="field_time_end_desc">环境约束 - 时间范围终点 (HH:MM)</td></tr>
+        <tr><td data-i18n="field_live2d_params">Live2D 参数覆写</td><td data-i18n="field_live2d_params_desc">进入状态时覆写 Live2D 参数，元素结构为 {id,value,target}，target 可选：Parameter/PartOpacity</td></tr>
+
+        <tr><td data-i18n="field_can_trigger">可触发子状态</td><td data-i18n="field_can_trigger_desc">在编辑器内以"状态 + 权重"列表配置（权重越大越容易被选中）</td></tr>
+
+
+      </table>
+
+      <h3 data-i18n="section_branches">对话分支</h3>
+      <p data-i18n="branches_desc">对话分支允许用户通过点击选项来决定对话走向。每个分支包含显示文本和跳转目标状态。</p>
+      <p data-i18n="branch_show_bubble_desc">"显示气泡"(branch_show_bubble) 用于控制分支选项是否以气泡形式展示；该选项位于「对话分支」折叠区内。</p>
+
+      <h3 data-i18n="section_triggers">触发器配置</h3>
+      <p data-i18n="triggers_desc">触发器定义事件与状态的关联。常用事件（支持 <code>keydown:&lt;Key&gt;</code>/<code>keyup:&lt;Key&gt;</code>）：</p>
+      <table>
+        <tr><th data-i18n="table_event">事件名</th><th data-i18n="table_timing">触发时机</th></tr>
+        <tr><td data-i18n="event_id_click">click</td><td data-i18n="event_click">用户点击角色</td></tr>
+        <tr><td data-i18n="event_id_click_up">click_up</td><td data-i18n="event_click_up">左键松开（窗口内）</td></tr>
+        <tr><td data-i18n="event_id_right_click">right_click</td><td data-i18n="event_right_click">用户右键点击角色</td></tr>
+        <tr><td data-i18n="event_id_right_click_up">right_click_up</td><td data-i18n="event_right_click_up">右键松开（窗口内）</td></tr>
+        <tr><td data-i18n="event_id_global_click">global_click</td><td data-i18n="event_global_click">全局左键点击（需开启全局鼠标监听）</td></tr>
+        <tr><td data-i18n="event_id_global_click_up">global_click_up</td><td data-i18n="event_global_click_up">全局左键松开（需开启全局鼠标监听）</td></tr>
+        <tr><td data-i18n="event_id_global_right_click">global_right_click</td><td data-i18n="event_global_right_click">全局右键点击（需开启全局鼠标监听）</td></tr>
+        <tr><td data-i18n="event_id_global_right_click_up">global_right_click_up</td><td data-i18n="event_global_right_click_up">全局右键松开（需开启全局鼠标监听）</td></tr>
+        <tr><td data-i18n="event_id_global_keydown">global_keydown</td><td data-i18n="event_global_keydown">全局键盘按下（任意键，需开启全局键盘监听）</td></tr>
+        <tr><td data-i18n="event_id_global_keyup">global_keyup</td><td data-i18n="event_global_keyup">全局键盘松开（任意键，需开启全局键盘监听）</td></tr>
+        <tr><td data-i18n="event_id_login">login</td><td data-i18n="event_login">程序启动</td></tr>
+        <tr><td data-i18n="event_id_drag_start">drag_start</td><td data-i18n="event_drag_start">开始拖动窗口</td></tr>
+        <tr><td data-i18n="event_id_drag_end">drag_end</td><td data-i18n="event_drag_end">结束拖动窗口</td></tr>
+        <tr><td><code data-i18n="event_id_keydown">keydown:&lt;Key&gt;</code></td><td data-i18n="event_keydown_space">按键触发（例如：keydown:Space）</td></tr>
+        <tr><td><code data-i18n="event_id_keyup">keyup:&lt;Key&gt;</code></td><td data-i18n="event_keyup_space">按键松开触发（例如：keyup:Space）</td></tr>
+
+        <tr><td data-i18n="event_id_birthday">birthday</td><td data-i18n="event_birthday">生日事件</td></tr>
+        <tr><td data-i18n="event_id_firstday">firstday</td><td data-i18n="event_firstday">首次启动事件</td></tr>
+        <tr><td data-i18n="event_id_login_silence">login_silence</td><td data-i18n="event_login_silence">启动后进入静默/无声状态</td></tr>
+        <tr><td data-i18n="event_id_music_start">music_start</td><td data-i18n="event_music_start">音乐开始播放</td></tr>
+        <tr><td data-i18n="event_id_music_end">music_end</td><td data-i18n="event_music_end">音乐停止播放</td></tr>
+        <tr><td data-i18n="event_id_work">work</td><td data-i18n="event_work">工作事件</td></tr>
+
+      </table>
+
+
+      <h4 data-i18n="section_allow_repeat">允许重复触发</h4>
+      <p data-i18n="allow_repeat_introduction_desc">每个触发状态组都有一个"允许重复触发"(allow_repeat)选项。关闭后，同一状态不会连续触发两次（仅当该组状态数大于1时生效）。</p>
+
+      <h3 data-i18n="section_data_counter">数据计数器</h3>
+      <p data-i18n="data_counter_desc">状态激活时对 Mod 数据执行操作：set(设置)、add(加)、sub(减)、mul(乘)、div(除)。</p>
+      <p data-i18n="trigger_counter_desc">你也可以在编辑器的「状态限制」中，通过 trigger_counter_start / trigger_counter_end 限制该状态在特定 ModData.value 区间内才允许触发。</p>
+      <p data-i18n="trigger_temp_desc">同样地，你也可以通过 trigger_temp_start / trigger_temp_end 限制该状态仅在气温（environment.temperature，单位 °C）处于区间内才允许触发。</p>
+      <p data-i18n="trigger_uptime_desc">此外，你也可以通过 trigger_uptime 限制该状态仅在程序启动后已运行达到一定分钟数时才允许触发（0 表示不限制）。</p>
+      <p data-i18n="trigger_weather_desc">此外，你也可以通过 trigger_weather 限制该状态仅在天气满足条件时才允许触发：若填纯数字则匹配 weatherCode（condition_code），否则匹配天气描述（condition）。</p>
+
+      <h3 data-i18n="section_list_operations">列表操作</h3>
+      <p data-i18n="list_operations_desc">状态列表和触发器列表提供多种便捷操作：</p>
+      <ul>
+        <li data-i18n="list_op_filter"><strong>筛选器</strong>：支持按名称、关联动画、关联音频、关联文本等字段过滤列表内容</li>
+        <li data-i18n="list_op_clipboard"><strong>复制/粘贴</strong>：可将状态或触发器复制到剪切板，在不同 Mod 之间快速迁移数据</li>
+        <li data-i18n="list_op_drag"><strong>拖拽排序</strong>：拖拽列表条目可重新排列顺序（使用筛选器时需先清空条件）</li>
+        <li data-i18n="list_op_delete_all"><strong>全部删除</strong>：一键清空所有普通状态或所有触发器</li>
+      </ul>
+
+
+    </section>
+
+    <!-- 气泡样式 -->
+    <section id="bubble">
+      <h2 data-i18n="section_bubble">💬 气泡样式配置</h2>
+      <p data-i18n="bubble_desc">可视化配置对话气泡外观，支持实时预览。</p>
+      <ul>
+        <li data-i18n="bubble_main"><strong>气泡主体</strong>：背景、边框、圆角、阴影、背景滤镜</li>
+        <li data-i18n="bubble_text"><strong>文字样式</strong>：颜色、字体大小、行高、字体</li>
+        <li data-i18n="bubble_tail"><strong>尾巴样式</strong>：大小、颜色、阴影</li>
+        <li data-i18n="bubble_deco"><strong>装饰文字</strong>：上方/下方装饰字符</li>
+        <li data-i18n="bubble_branch"><strong>分支按钮</strong>：正常/悬浮/点击状态样式</li>
+      </ul>
+    </section>
+
+    <!-- AI 工具配置 -->
+    <section id="aitools">
+      <h2 data-i18n="section_aitools">🤖 AI 工具配置</h2>
+      <p data-i18n="aitools_intro_desc">配置 AI 截图识别工具，可以自动截取指定窗口的屏幕区域，通过 AI 分析后触发角色状态变化。</p>
+
+      <h3 data-i18n="aitools_intro_process_title">窗口配置</h3>
+      <p data-i18n="aitools_intro_process_desc">每个窗口名对应一个目标程序窗口，可包含多个识别工具。</p>
+      <table>
+        <tr><th data-i18n="table_field">字段</th><th data-i18n="table_desc">说明</th></tr>
+        <tr><td data-i18n="aitools_intro_field_process_name">window_name</td><td data-i18n="aitools_intro_process_name_desc">目标窗口名称（窗口标题中包含的关键词）</td></tr>
+      </table>
+
+      <h3 data-i18n="aitools_intro_tool_title">工具配置</h3>
+      <p data-i18n="aitools_intro_tool_desc">每个工具定义一组截图识别规则。</p>
+      <table>
+        <tr><th data-i18n="table_field">字段</th><th data-i18n="table_desc">说明</th></tr>
+        <tr><td data-i18n="aitools_intro_field_name">name</td><td data-i18n="aitools_intro_name_desc">工具名称</td></tr>
+        <tr><td data-i18n="aitools_intro_field_type">type</td><td data-i18n="aitools_intro_type_desc">类型：auto（自动定时截图）或 manual（手动触发）</td></tr>
+        <tr><td data-i18n="aitools_intro_field_auto_start">auto_start</td><td data-i18n="aitools_intro_auto_start_desc">是否在检测到目标进程时自动启动</td></tr>
+        <tr><td data-i18n="aitools_intro_field_capture_rect">capture_rect</td><td data-i18n="aitools_intro_capture_rect_desc">截取区域 (x, y, width, height)</td></tr>
+        <tr><td data-i18n="aitools_intro_field_prompts">prompts</td><td data-i18n="aitools_intro_prompts_desc">发送给 AI 的提示词列表</td></tr>
+        <tr><td data-i18n="aitools_intro_field_result_processors">result_processors</td><td data-i18n="aitools_intro_result_processors_desc">AI 返回结果的二次处理规则列表（可选）</td></tr>
+        <tr><td data-i18n="aitools_intro_field_triggers">triggers</td><td data-i18n="aitools_intro_triggers_desc">关键词→触发器映射列表（keyword + trigger name）</td></tr>
+        <tr><td data-i18n="aitools_intro_field_show_info_window">show_info_window</td><td data-i18n="aitools_intro_show_info_window_desc">是否显示信息窗口（默认 false）</td></tr>
+      </table>
+
+      <h3 data-i18n="aitools_intro_rp_title">结果处理器 (result_processors)</h3>
+      <p data-i18n="aitools_intro_rp_desc">结果处理器对 AI 返回的原始文本进行二次处理。按顺序依次匹配，第一个命中的处理器的 result 替代原始文本传给 triggers。</p>
+
+      <h3 data-i18n="aitools_list_ops_title">列表操作</h3>
+      <p data-i18n="aitools_list_ops_desc">窗口列表与工具列表提供多种便捷操作，便于快速搭建与迁移配置：</p>
+      <ul>
+        <li data-i18n="aitools_list_op_drag"><strong>拖拽排序</strong>：使用卡片左侧的拖拽手柄可调整窗口/工具的顺序</li>
+        <li data-i18n="aitools_list_op_copy_paste"><strong>复制/粘贴</strong>：可复制单个工具或整个窗口配置到剪切板，并在其他 Mod 中粘贴复用</li>
+        <li data-i18n="aitools_list_op_search"><strong>搜索</strong>：支持在窗口内按关键字快速筛选工具列表</li>
+      </ul>
+
+      <table>
+        <tr><th data-i18n="table_field">字段</th><th data-i18n="table_desc">说明</th></tr>
+        <tr><td data-i18n="aitools_intro_rp_field_type">type</td><td data-i18n="aitools_intro_rp_type_desc">处理类型：number（数值范围匹配）、keyword（关键词包含匹配）、regex（正则匹配）</td></tr>
+        <tr><td data-i18n="aitools_intro_rp_field_result">result</td><td data-i18n="aitools_intro_rp_result_desc">匹配成功后输出的结果字符串（传给 triggers 做关键词匹配）</td></tr>
+        <tr><td data-i18n="aitools_intro_rp_field_min_max">min / max</td><td data-i18n="aitools_intro_rp_min_max_desc">数值型的阈值范围（含），仅 type = "number" 时有效</td></tr>
+        <tr><td data-i18n="aitools_intro_rp_field_pattern">pattern</td><td data-i18n="aitools_intro_rp_pattern_desc">关键词或正则表达式，仅 type = "keyword" / "regex" 时有效</td></tr>
+      </table>
+
+      <div class="callout callout-info">
+        <div class="callout-title" data-i18n="aitools_intro_rp_example_title">💡 示例</div>
+        <p data-i18n="aitools_intro_rp_example_desc">例如：type="number", result="hungry", min=0, max=35 — AI 返回 "32" 时，提取数值 32，在 [0,35] 范围内，输出 "hungry" 传给 triggers。</p>
+      </div>
+    </section>
+
+    <!-- 动画管理 -->
+    <section id="assets">
+      <h2 data-i18n="section_assets">🖼️ 动画管理</h2>
+      <p data-i18n="assets_desc">动画资源分为序列帧动画(sequence.json)和杂图(img.json)两类。</p>
+      <table>
+        <tr><th data-i18n="table_field">字段</th><th data-i18n="table_desc">说明</th></tr>
+        <tr><td data-i18n="asset_name">名称</td><td data-i18n="asset_name_desc">资源名称，供状态引用</td></tr>
+        <tr><td data-i18n="asset_img">图片路径</td><td data-i18n="asset_img_desc">相对于 asset/ 目录</td></tr>
+        <tr><td data-i18n="asset_sequence">是否序列帧</td><td data-i18n="asset_sequence_desc">是否为多帧动画</td></tr>
+        <tr><td data-i18n="asset_frame_time">帧间隔</td><td data-i18n="asset_frame_time_desc">每帧显示时间(秒)</td></tr>
+        <tr><td data-i18n="asset_frame_size">帧尺寸</td><td data-i18n="asset_frame_size_desc">单帧宽高(像素)</td></tr>
+        <tr><td data-i18n="asset_frame_num">帧数</td><td data-i18n="asset_frame_num_desc">横向/纵向帧数量</td></tr>
+        <tr><td data-i18n="asset_need_reverse">需要反向播放</td><td data-i18n="asset_need_reverse_desc">开启后会以乒乓方式播放（默认关闭，可在高级选项中设置）</td></tr>
+        <tr><td data-i18n="asset_origin_reverse">原始反向</td><td data-i18n="asset_origin_reverse_desc">图片序列本身为反向时可开启，用于纠正方向</td></tr>
+        <tr><td data-i18n="asset_offset">偏移</td><td data-i18n="asset_offset_desc">X/Y 偏移（像素），用于微调渲染位置</td></tr>
+      </table>
+
+      <h3 data-i18n="section_assets_import">资源导入</h3>
+      <p data-i18n="assets_import_desc">序列帧和杂图列表均提供便捷导入功能：</p>
+      <ul>
+        <li data-i18n="assets_import_batch"><strong>一键导入</strong>：点击「⬇️ 一键导入」按钮，可从文件系统批量选择图片文件并自动创建对应的资源条目</li>
+        <li data-i18n="assets_import_single"><strong>单个导入</strong>：点击「📥 导入」按钮，可单独导入一个图片文件</li>
+      </ul>
+
+      <div class="callout callout-warning">
+        <div class="callout-title" data-i18n="callout_asset_warning_title">⚠️ 注意</div>
+        <p data-i18n="callout_asset_warning_desc">动画图片需要手动放置到 asset/sequence/ 或 asset/img/ 目录。</p>
+      </div>
+    </section>
+
+    <!-- Live2D 动画 -->
+    <section id="live2d">
+      <h2 data-i18n="section_live2d">🎭 Live2D 动画</h2>
+      <p data-i18n="live2d_desc">Live2D Mod 使用 Live2D Cubism 模型代替序列帧动画。创建新 Mod 时选择 "Live2D" 类型即可。</p>
+
+      <h3 data-i18n="section_live2d_model_config">模型配置</h3>
+      <p data-i18n="live2d_model_config_desc">在「动画」标签页中配置 Live2D 模型的基本参数。</p>
+      <table>
+        <tr><th data-i18n="table_field">字段</th><th data-i18n="table_desc">说明</th></tr>
+        <tr><td data-i18n="live2d_field_name">name</td><td data-i18n="live2d_field_name_desc">模型显示名称</td></tr>
+        <tr><td data-i18n="live2d_field_base_dir">base_dir</td><td data-i18n="live2d_field_base_dir_desc">模型资源根目录，相对于 Mod 目录</td></tr>
+        <tr><td data-i18n="live2d_field_model_json">model_json</td><td data-i18n="live2d_field_model_json_desc">模型描述文件名（通常为 .model3.json）</td></tr>
+        <tr><td data-i18n="live2d_field_scale">scale</td><td data-i18n="live2d_field_scale_desc">模型整体缩放比例（默认 1）</td></tr>
+        <tr><td data-i18n="live2d_field_textures_dir">textures_dir</td><td data-i18n="live2d_field_textures_dir_desc">贴图目录</td></tr>
+        <tr><td data-i18n="live2d_field_motions_dir">motions_dir</td><td data-i18n="live2d_field_motions_dir_desc">动作文件目录</td></tr>
+        <tr><td data-i18n="live2d_field_expressions_dir">expressions_dir</td><td data-i18n="live2d_field_expressions_dir_desc">表情文件目录</td></tr>
+        <tr><td data-i18n="live2d_field_physics_json">physics_json</td><td data-i18n="live2d_field_physics_desc">物理运算配置文件</td></tr>
+        <tr><td data-i18n="live2d_field_pose_json">pose_json</td><td data-i18n="live2d_field_pose_desc">姿势配置文件</td></tr>
+        <tr><td data-i18n="live2d_field_breath_json">breath_json</td><td data-i18n="live2d_field_breath_desc">呼吸动画配置文件</td></tr>
+        <tr><td data-i18n="live2d_field_eye_blink">eye_blink</td><td data-i18n="live2d_field_eye_blink_desc">是否启用自动眨眼</td></tr>
+        <tr><td data-i18n="live2d_field_lip_sync">lip_sync</td><td data-i18n="live2d_field_lip_sync_desc">是否启用口型同步</td></tr>
+      </table>
+
+
+      <h3 data-i18n="section_live2d_motions_config">动作配置</h3>
+      <p data-i18n="live2d_motions_config_desc">管理 Live2D 模型的动作（Motion）列表，每个动作对应一个 .motion3.json 文件。</p>
+      <table>
+        <tr><th data-i18n="table_field">字段</th><th data-i18n="table_desc">说明</th></tr>
+        <tr><td data-i18n="live2d_motion_name">name</td><td data-i18n="live2d_motion_name_desc">动作名称，供状态映射引用</td></tr>
+        <tr><td data-i18n="live2d_motion_file">file</td><td data-i18n="live2d_motion_file_desc">动作文件路径（相对于 motions_dir）</td></tr>
+        <tr><td data-i18n="live2d_motion_group">group</td><td data-i18n="live2d_motion_group_desc">动作分组（如 idle、tap 等）</td></tr>
+        <tr><td data-i18n="live2d_motion_priority">priority</td><td data-i18n="live2d_motion_priority_desc">播放优先级</td></tr>
+        <tr><td data-i18n="live2d_motion_fade">fade_in_ms / fade_out_ms</td><td data-i18n="live2d_motion_fade_desc">淡入/淡出时间（毫秒）</td></tr>
+        <tr><td data-i18n="live2d_motion_loop">loop</td><td data-i18n="live2d_motion_loop_desc">是否循环播放</td></tr>
+      </table>
+
+
+      <h3 data-i18n="section_live2d_expressions_config">表情配置</h3>
+      <p data-i18n="live2d_expressions_config_desc">管理 Live2D 模型的表情列表，每个表情对应一个 .exp3.json 文件。</p>
+      <table>
+        <tr><th data-i18n="table_field">字段</th><th data-i18n="table_desc">说明</th></tr>
+        <tr><td data-i18n="live2d_expression_name">name</td><td data-i18n="live2d_expression_name_desc">表情名称</td></tr>
+        <tr><td data-i18n="live2d_expression_file">file</td><td data-i18n="live2d_expression_file_desc">表情文件路径（相对于 expressions_dir）</td></tr>
+      </table>
+
+
+      <h3 data-i18n="section_live2d_states_config">状态映射</h3>
+      <p data-i18n="live2d_states_config_desc">状态映射定义了每个应用状态应使用的 Live2D 动作和表情。这些条目会在「状态和触发」页的动画下拉中可选。</p>
+      <table>
+        <tr><th data-i18n="table_field">字段</th><th data-i18n="table_desc">说明</th></tr>
+        <tr><td data-i18n="live2d_state_name">state</td><td data-i18n="live2d_state_name_desc">状态名称（与 manifest 中的状态名对应）</td></tr>
+        <tr><td data-i18n="live2d_state_motion">motion</td><td data-i18n="live2d_state_motion_desc">关联的动作名称</td></tr>
+        <tr><td data-i18n="live2d_state_expression">expression</td><td data-i18n="live2d_state_expression_desc">关联的表情名称（可选）</td></tr>
+        <tr><td data-i18n="live2d_state_scale">scale</td><td data-i18n="live2d_state_scale_desc">模型缩放比例</td></tr>
+        <tr><td data-i18n="live2d_state_offset">offset_x / offset_y</td><td data-i18n="live2d_state_offset_desc">位置偏移量</td></tr>
+      </table>
+
+
+      <h3 data-i18n="section_live2d_background_layers">背景图层</h3>
+      <p data-i18n="live2d_background_layers_desc">背景图层用于在 Live2D 模型的下方或上方渲染额外的图片层，适用于静态背景、按键叠加高亮等场景。</p>
+      <table>
+        <tr><th data-i18n="table_field">字段</th><th data-i18n="table_desc">说明</th></tr>
+        <tr><td data-i18n="live2d_bg_field_name">name</td><td data-i18n="live2d_bg_field_name_desc">图层名称（标识用）</td></tr>
+        <tr><td data-i18n="live2d_bg_field_file">file</td><td data-i18n="live2d_bg_field_file_desc">图片文件路径（相对于 base_dir）</td></tr>
+        <tr><td data-i18n="live2d_bg_field_layer">layer</td><td data-i18n="live2d_bg_field_layer_desc">渲染层级："behind"（模型之后）或 "front"（模型之前）</td></tr>
+        <tr><td data-i18n="live2d_bg_field_scale">scale</td><td data-i18n="live2d_bg_field_scale_desc">缩放比例（1.0 = 原尺寸）</td></tr>
+        <tr><td data-i18n="live2d_bg_field_offset">offset_x / offset_y</td><td data-i18n="live2d_bg_field_offset_desc">位置偏移量（像素）</td></tr>
+        <tr><td data-i18n="live2d_bg_field_events">events</td><td data-i18n="live2d_bg_field_events_desc">关联事件名列表，任一事件触发时显示；为空则常驻显示</td></tr>
+        <tr><td data-i18n="live2d_bg_field_audio">audio</td><td data-i18n="live2d_bg_field_audio_desc">触发时播放的音效名称（空字符串表示不播放）</td></tr>
+        <tr><td data-i18n="live2d_bg_field_dir">dir</td><td data-i18n="live2d_bg_field_dir_desc">图片所在目录（可选，用于分组筛选）</td></tr>
+      </table>
+
+
+      <h3 data-i18n="section_live2d_sync">从文件同步</h3>
+      <p data-i18n="live2d_sync_desc">点击「从文件同步」按钮，可从 Live2D 模型目录中自动读取配置：</p>
+      <ul>
+        <li data-i18n="live2d_sync_auto_detect"><strong>自动检测模型</strong>：若 base_dir 为空则自动使用 <code>asset/live2d/</code>，自动扫描 <code>.model3.json</code> 文件</li>
+        <li data-i18n="live2d_sync_auto_config"><strong>自动填充配置</strong>：从 model3.json 的 FileReferences 自动推断 name、model_json、physics_json、pose_json、textures_dir、motions_dir、expressions_dir、eye_blink、lip_sync</li>
+        <li data-i18n="live2d_sync_auto_motions"><strong>自动导入动作/表情</strong>：从 model3.json 解析完整的动作和表情列表</li>
+        <li data-i18n="live2d_sync_auto_states"><strong>自动生成状态映射</strong>：为每个动作创建对应的状态-动画映射条目（已有映射会保留用户自定义的参数）</li>
+      </ul>
+
+      <h3 data-i18n="section_live2d_gen_keyboard">从文件生成输入事件</h3>
+      <p data-i18n="live2d_gen_keyboard_desc">仅适用于 Live2D Mod。点击「⌨️ 从文件生成输入事件」按钮，可从 cdi3.json（DisplayInfo）中识别键盘/鼠标相关参数，自动批量生成对应的状态和触发器（含 keydown/keyup 事件），并自动开启全局键盘/鼠标监听。适用于需要实时响应键盘输入的桌面宠物模型（如 BongoCat）。</p>
+
+      <h3 data-i18n="section_live2d_params_browser">模型参数浏览器</h3>
+      <p data-i18n="live2d_params_browser_desc">Live2D 动画标签页内的可折叠面板。点击「从文件读取」可加载并展示 cdi3.json 中定义的所有模型参数，按分组折叠显示，支持组合参数识别。方便查看可用的参数 ID，用于配置 live2d_params 覆写。</p>
+
+      <h3 data-i18n="section_live2d_add_state">新增同名状态</h3>
+      <p data-i18n="live2d_add_state_desc">每个状态映射条目右侧的「新增同名状态」按钮可快速在 manifest 中创建对应的状态，并自动联动：</p>
+      <ul>
+        <li data-i18n="live2d_add_state_anima"><strong>关联动画</strong>：自动设为当前映射名称</li>
+        <li data-i18n="live2d_add_state_text"><strong>关联文本</strong>：若存在同名的对话文本条目，自动关联</li>
+        <li data-i18n="live2d_add_state_audio"><strong>关联音频</strong>：若存在同名的音频条目，自动关联</li>
+      </ul>
+
+      <div class="callout callout-info">
+        <div class="callout-title" data-i18n="callout_live2d_tip_title">💡 提示</div>
+        <p data-i18n="callout_live2d_tip_desc">Live2D 模型文件需要手动放置到对应目录。建议参考 mods/mao_pro 的结构组织文件。</p>
+      </div>
+
+      <h3 data-i18n="section_live2d_import_folder">导入文件夹</h3>
+      <p data-i18n="live2d_import_folder_desc">点击「📂 导入文件夹」按钮，可选择一个外部文件夹，将其内容递归复制到 Mod 的 asset/live2d/ 目录下。适合从外部位置批量导入 Live2D 模型资源。</p>
+
+      <div class="callout callout-info">
+        <div class="callout-title" data-i18n="callout_live2d_export_title">💡 导出说明</div>
+        <p data-i18n="callout_live2d_export_desc">导出 Live2D Mod 时，<code>asset/live2d/</code> 目录下的所有文件（包括 .model3.json、.motion3.json、.exp3.json、.physics3.json 等）都会被完整打包。</p>
+      </div>
+    </section>
+
+    <!-- PngRemix 动画 -->
+    <section id="pngremix">
+      <h2 data-i18n="section_pngremix">🧩 PngRemix 动画</h2>
+      <p data-i18n="pngremix_desc">PngRemix Mod 使用 PNGTuber Remix 编辑器创建的 .pngRemix 二进制模型文件。创建新 Mod 时选择 "PngRemix" 类型即可。</p>
+
+      <h3 data-i18n="section_pngremix_model_config">模型配置</h3>
+      <p data-i18n="pngremix_model_config_desc">在「动画」标签页中配置 PngRemix 模型的基本参数。</p>
+      <table>
+        <tr><th data-i18n="table_field">字段</th><th data-i18n="table_desc">说明</th></tr>
+        <tr><td data-i18n="pngremix_field_name">name</td><td data-i18n="pngremix_field_name_desc">模型显示名称</td></tr>
+        <tr><td data-i18n="pngremix_field_file">pngremix_file</td><td data-i18n="pngremix_field_file_desc">.pngRemix 模型文件路径（相对于 asset/ 目录）</td></tr>
+        <tr><td data-i18n="pngremix_field_default_state">default_state_index</td><td data-i18n="pngremix_field_default_state_desc">模型加载后的初始显示状态索引（从 0 开始）</td></tr>
+        <tr><td data-i18n="pngremix_field_max_fps">max_fps</td><td data-i18n="pngremix_field_max_fps_desc">PngRemix 渲染的最大帧率（0 表示不限制）</td></tr>
+        <tr><td data-i18n="pngremix_field_model_scale">model_scale</td><td data-i18n="pngremix_field_model_scale_desc">模型整体缩放比例</td></tr>
+      </table>
+
+
+      <h3 data-i18n="section_pngremix_features_config">功能特性</h3>
+      <p data-i18n="pngremix_features_config_desc">配置 PngRemix 模型的交互功能：鼠标跟随、自动眨眼、点击弹跳等。</p>
+      <table>
+        <tr><th data-i18n="table_field">字段</th><th data-i18n="table_desc">说明</th></tr>
+        <tr><td data-i18n="pngremix_feature_mouse_follow">mouse_follow</td><td data-i18n="pngremix_feature_mouse_follow_desc">模型是否跟随鼠标方向</td></tr>
+        <tr><td data-i18n="pngremix_feature_auto_blink">auto_blink</td><td data-i18n="pngremix_feature_auto_blink_desc">是否自动播放眨眼动画</td></tr>
+        <tr><td data-i18n="pngremix_feature_click_bounce">click_bounce</td><td data-i18n="pngremix_feature_click_bounce_desc">点击时是否播放弹跳效果</td></tr>
+        <tr><td data-i18n="pngremix_feature_blink_speed">blink_speed</td><td data-i18n="pngremix_feature_blink_speed_desc">眨眼动画速度（秒）</td></tr>
+        <tr><td data-i18n="pngremix_feature_blink_chance">blink_chance</td><td data-i18n="pngremix_feature_blink_chance_desc">眨眼触发概率（1/N；N>=1，越大越不容易眨眼）</td></tr>
+        <tr><td data-i18n="pngremix_feature_blink_hold_ratio">blink_hold_ratio</td><td data-i18n="pngremix_feature_blink_hold_desc">眨眼闭合保持比例（0.0-1.0）</td></tr>
+        <tr><td data-i18n="pngremix_feature_click_bounce_amp">click_bounce_amp</td><td data-i18n="pngremix_feature_bounce_amp_desc">弹跳幅度（像素）</td></tr>
+        <tr><td data-i18n="pngremix_feature_click_bounce_duration">click_bounce_duration</td><td data-i18n="pngremix_feature_bounce_dur_desc">弹跳持续时间（秒）</td></tr>
+      </table>
+
+
+      <h3 data-i18n="section_pngremix_expressions_config">表情配置</h3>
+      <p data-i18n="pngremix_expressions_config_desc">管理 PngRemix 模型的表情列表。每个表情通过切换状态索引实现。</p>
+      <table>
+        <tr><th data-i18n="table_field">字段</th><th data-i18n="table_desc">说明</th></tr>
+        <tr><td data-i18n="pngremix_expression_name">name</td><td data-i18n="pngremix_expression_name_desc">表情名称，供状态映射和 pngremix_params 引用</td></tr>
+        <tr><td data-i18n="pngremix_expression_index">state_index</td><td data-i18n="pngremix_expression_index_desc">对应的模型状态索引（从 0 开始）</td></tr>
+      </table>
+
+      <h3 data-i18n="section_pngremix_expr_add_state">从表情新增同名状态</h3>
+      <p data-i18n="pngremix_expr_add_state_desc">在表情列表中，每个表情右侧也提供「新增同名状态」按钮，可快速创建同名状态，并自动把该表情写入 pngremix_params：</p>
+      <ul>
+        <li data-i18n="pngremix_expr_add_state_params"><strong>自动写入参数</strong>：创建的状态会包含 <code>pngremix_params</code>，默认加入 <code>{ type: "expression", name: 表情名 }</code></li>
+        <li data-i18n="pngremix_expr_add_state_text"><strong>联动文本</strong>：若存在同名的对话文本条目，自动关联到 state.text</li>
+        <li data-i18n="pngremix_expr_add_state_audio"><strong>联动音频</strong>：若存在同名的音频条目，自动关联到 state.audio</li>
+      </ul>
+
+
+      <h3 data-i18n="section_pngremix_motions_config">动作配置</h3>
+      <p data-i18n="pngremix_motions_config_desc">管理 PngRemix 模型的动作列表。动作可通过热键触发。</p>
+      <table>
+        <tr><th data-i18n="table_field">字段</th><th data-i18n="table_desc">说明</th></tr>
+        <tr><td data-i18n="pngremix_motion_name">name</td><td data-i18n="pngremix_motion_name_desc">动作名称，供状态映射和 pngremix_params 引用</td></tr>
+        <tr><td data-i18n="pngremix_motion_hotkey">hotkey</td><td data-i18n="pngremix_motion_hotkey_desc">绑定的热键（如 F1-F9）</td></tr>
+        <tr><td data-i18n="pngremix_motion_description">description</td><td data-i18n="pngremix_motion_description_desc">动作的描述说明</td></tr>
+      </table>
+
+
+      <h3 data-i18n="section_pngremix_states_config">状态映射</h3>
+      <p data-i18n="pngremix_states_config_desc">状态映射定义了每个应用状态应使用的 PngRemix 表情和动作。这些条目会在「状态和触发」页的动画下拉中可选。</p>
+      <table>
+        <tr><th data-i18n="table_field">字段</th><th data-i18n="table_desc">说明</th></tr>
+        <tr><td data-i18n="pngremix_state_name">state</td><td data-i18n="pngremix_state_name_desc">状态名称（与 manifest 中的状态名对应）</td></tr>
+        <tr><td data-i18n="pngremix_state_expression">expression</td><td data-i18n="pngremix_state_expression_desc">关联的表情名称（可选）</td></tr>
+        <tr><td data-i18n="pngremix_state_motion">motion</td><td data-i18n="pngremix_state_motion_desc">关联的动作名称（可选）</td></tr>
+        <tr><td data-i18n="pngremix_state_mouth_state">mouth_state</td><td data-i18n="pngremix_state_mouth_state_desc">口型状态：0=闭嘴，1=张嘴，2=大叫；为空表示不覆写</td></tr>
+        <tr><td data-i18n="pngremix_state_scale">scale</td><td data-i18n="pngremix_state_scale_desc">模型缩放比例</td></tr>
+        <tr><td data-i18n="pngremix_state_offset">offset_x / offset_y</td><td data-i18n="pngremix_state_offset_desc">位置偏移量</td></tr>
+
+      </table>
+
+
+      <h3 data-i18n="section_pngremix_params_config">PngRemix 参数覆写</h3>
+      <p data-i18n="pngremix_params_config_desc">在状态编辑面板中，PngRemix 类型的 Mod 可使用 pngremix_params 在进入状态时切换表情或触发动作。每条参数包含 type（expression 或 motion）和 name。</p>
+
+      <h3 data-i18n="section_pngremix_import">导入文件</h3>
+      <p data-i18n="pngremix_import_desc">点击「📂 导入文件」按钮，可选择一个 .pngRemix 文件并自动复制到 Mod 的 asset/ 目录下，同时更新 pngremix_file 路径配置。</p>
+
+      <h3 data-i18n="section_pngremix_sync">从文件同步</h3>
+      <p data-i18n="pngremix_sync_desc">点击同步按钮可从 .pngRemix 文件中自动读取配置：</p>
+      <ul>
+        <li data-i18n="pngremix_sync_config"><strong>从文件同步配置</strong>：从 .pngRemix 文件读取 blink_speed、blink_chance 等模型特性参数，自动填充到配置中</li>
+        <li data-i18n="pngremix_sync_assets"><strong>从文件同步资产</strong>：从 .pngRemix 文件扫描所有 state/hotkey 信息，自动生成表情和动作列表</li>
+      </ul>
+
+      <h3 data-i18n="section_pngremix_add_state">新增同名状态</h3>
+      <p data-i18n="pngremix_add_state_desc">每个状态映射条目右侧的「新增同名状态」按钮可快速在 manifest 中创建对应的状态，并自动联动：</p>
+      <ul>
+        <li data-i18n="pngremix_add_state_anima"><strong>关联动画</strong>：自动设为当前映射名称</li>
+        <li data-i18n="pngremix_add_state_text"><strong>关联文本</strong>：若存在同名的对话文本条目，自动关联</li>
+        <li data-i18n="pngremix_add_state_audio"><strong>关联音频</strong>：若存在同名的音频条目，自动关联</li>
+      </ul>
+
+      <div class="callout callout-info">
+        <div class="callout-title" data-i18n="callout_pngremix_tip_title">💡 提示</div>
+        <p data-i18n="callout_pngremix_tip_desc">.pngRemix 模型文件需要使用 PNGTuber Remix 编辑器创建。将 .pngRemix 文件放置到 asset/ 目录下，然后在编辑器中配置路径。</p>
+      </div>
+    </section>
+
+    <!-- 3D 动画 -->
+    <section id="threed">
+      <h2 data-i18n="section_threed">🧊 3D 动画</h2>
+      <p data-i18n="threed_desc">3D Mod 使用 VRM 或 PMX 模型文件进行 3D 渲染。创建新 Mod 时选择 "3D 模型" 类型即可。支持 VRM + VRMA 和 PMX + VMD 两种模型/动画组合。</p>
+
+      <h3 data-i18n="section_threed_model_config">模型配置</h3>
+      <p data-i18n="threed_model_config_desc">在「动画」标签页中配置 3D 模型的基本参数。</p>
+      <table>
+        <tr><th data-i18n="table_field">字段</th><th data-i18n="table_desc">说明</th></tr>
+        <tr><td data-i18n="threed_field_name">name</td><td data-i18n="threed_field_name_desc">模型显示名称</td></tr>
+        <tr><td data-i18n="threed_field_type">type</td><td data-i18n="threed_field_type_desc">模型类型：vrm（VRM 格式）或 pmx（PMX 格式）</td></tr>
+        <tr><td data-i18n="threed_field_file">file</td><td data-i18n="threed_field_file_desc">模型文件路径（相对于 Mod 根目录，如 asset/3d/model.vrm）</td></tr>
+        <tr><td data-i18n="threed_field_scale">scale</td><td data-i18n="threed_field_scale_desc">整体缩放系数（默认 1）</td></tr>
+        <tr><td data-i18n="threed_field_offset">offset_x / offset_y</td><td data-i18n="threed_field_offset_desc">位置偏移量</td></tr>
+        <tr><td data-i18n="threed_field_texture_dir">texture_base_dir</td><td data-i18n="threed_field_texture_dir_desc">纹理文件基础目录（PMX 模型使用，可选）</td></tr>
+        <tr><td data-i18n="threed_field_anim_dir">animation_base_dir</td><td data-i18n="threed_field_anim_dir_desc">动画文件基础目录（如 asset/3d/animations）</td></tr>
+      </table>
+
+
+      <h3 data-i18n="section_threed_animations_config">动画配置</h3>
+      <p data-i18n="threed_animations_config_desc">管理 3D 模型的动画列表。VRM 模型使用 .vrma 格式动画，PMX 模型使用 .vmd 格式动画。</p>
+      <table>
+        <tr><th data-i18n="table_field">字段</th><th data-i18n="table_desc">说明</th></tr>
+        <tr><td data-i18n="threed_anim_field_name">name</td><td data-i18n="threed_anim_field_name_desc">动画名称，供状态映射引用</td></tr>
+        <tr><td data-i18n="threed_anim_field_type">type</td><td data-i18n="threed_anim_field_type_desc">动画类型：vrma（VRM Animation）或 vmd（VMD 格式）</td></tr>
+        <tr><td data-i18n="threed_anim_field_file">file</td><td data-i18n="threed_anim_field_file_desc">动画文件路径（相对于 animation_base_dir）</td></tr>
+        <tr><td data-i18n="threed_anim_field_speed">speed</td><td data-i18n="threed_anim_field_speed_desc">播放速度（默认 1）</td></tr>
+        <tr><td data-i18n="threed_anim_field_fps">fps</td><td data-i18n="threed_anim_field_fps_desc">帧率（默认 60），主要用于 VRMA 动画</td></tr>
+      </table>
+
+
+      <h3 data-i18n="section_threed_sync">从文件同步</h3>
+      <p data-i18n="threed_sync_desc">编辑器提供两个同步功能，可以自动扫描 asset/3d/ 目录：</p>
+      <ul>
+        <li data-i18n="threed_sync_config"><strong>从文件同步配置</strong>：自动检测 .vrm/.pmx 模型文件，填充 name、type、file 等模型配置</li>
+        <li data-i18n="threed_sync_assets"><strong>从文件同步资源</strong>：扫描 .vrma/.vmd 动画文件，自动生成动画列表</li>
+      </ul>
+
+      <h3 data-i18n="section_threed_add_state">新增同名状态</h3>
+      <p data-i18n="threed_add_state_desc">每个动画条目右侧的「新增同名状态」按钮可快速在 manifest 中创建对应的状态，并自动设置关联动画名。</p>
+
+      <h3 data-i18n="section_threed_import_folder">导入文件夹</h3>
+      <p data-i18n="threed_import_folder_desc">点击「📂 导入文件夹」按钮，可选择一个外部文件夹，将其内容递归复制到 Mod 的 asset/3d/ 目录下。适合从外部位置批量导入 3D 模型和动画资源。</p>
+
+      <div class="callout callout-info">
+        <div class="callout-title" data-i18n="callout_threed_tip_title">💡 提示</div>
+        <p data-i18n="callout_threed_tip_desc">3D 模型文件（.vrm/.pmx）和动画文件（.vrma/.vmd）需要手动放置到 asset/3d/ 目录下。PMX 模型的纹理文件放置到 asset/3d/textures/ 目录。</p>
+      </div>
+
+      <div class="callout callout-info">
+        <div class="callout-title" data-i18n="callout_threed_format_title">💡 支持的格式</div>
+        <p data-i18n="callout_threed_format_desc">VRM 模型搭配 VRMA 动画使用（通过 Three.js + @pixiv/three-vrm 渲染）；PMX 模型搭配 VMD 动画使用（通过 Three.js MMDLoader 渲染）。纹理支持 PNG、BMP、TGA、JPG、WebP。</p>
+      </div>
+    </section>
+
+    <!-- 文本管理 -->
+    <section id="texts">
+      <h2 data-i18n="section_texts">📝 多语言文本</h2>
+      <p data-i18n="texts_desc">配置多语言的角色信息和对话内容。</p>
+      <h4 data-i18n="texts_info_title">角色信息 (info.json)</h4>
+      <p data-i18n="texts_info_desc">语言ID、语言名称、角色名称、角色描述</p>
+      <h4 data-i18n="texts_speech_title">对话文本 (speech.json)</h4>
+      <p data-i18n="texts_speech_desc">名称、内容(支持Markdown)、持续时间(秒)</p>
+      <p data-i18n="texts_speech_placeholders_desc">支持占位符：{nickname}（昵称）、{days_used}（使用天数）、{usage_hours}/{total_usage_hours}（总使用时长，小时）、{uptime}（本次启动已运行时长，HH:MM:SS）</p>
+
+      <h4 data-i18n="texts_add_state_title">新增同名状态</h4>
+      <p data-i18n="texts_add_state_desc">每条对话文本右侧有「新增同名状态」按钮，点击后可快速在 manifest 中创建同名状态，并自动联动：</p>
+      <ul>
+        <li data-i18n="texts_add_state_text"><strong>关联文本</strong>：自动设为当前文本名称</li>
+        <li data-i18n="texts_add_state_anima"><strong>关联动画</strong>：若 Live2D 状态映射中存在同名条目，自动关联</li>
+        <li data-i18n="texts_add_state_audio"><strong>关联音频</strong>：若音频资源中存在同名条目，自动关联</li>
+      </ul>
+      <h4 data-i18n="texts_markdown_title">Markdown 语法</h4>
+
+      <ul>
+        <li><code data-i18n="md_bold_example">**文本**</code> → <span data-i18n="md_bold">加粗</span></li>
+        <li><code data-i18n="md_link_example">[文本](链接)</code> → <span data-i18n="md_link">超链接</span></li>
+        <li><code>\n</code> → <span data-i18n="md_newline">换行</span></li>
+      </ul>
+
+      <h4 data-i18n="texts_lang_operations_title">语言管理操作</h4>
+      <p data-i18n="texts_lang_operations_desc">每种语言支持以下操作：</p>
+      <ul>
+        <li data-i18n="texts_lang_op_copy"><strong>复制语言</strong>：将整种语言的所有数据复制到剪切板</li>
+        <li data-i18n="texts_lang_op_paste"><strong>粘贴语言</strong>：从剪切板粘贴语言数据，可新建语言或覆盖已有语言</li>
+        <li data-i18n="texts_lang_op_delete"><strong>删除语言</strong>：删除指定语言（至少保留一种语言）</li>
+      </ul>
+    </section>
+
+    <!-- 音频管理 -->
+    <section id="audio">
+      <h2 data-i18n="section_audio">🔊 多语言音频</h2>
+      <p data-i18n="audio_desc">配置多语言的语音资源。音频文件支持 .wav 格式，需要手动放置到对应目录。</p>
+      <p data-i18n="audio_import_desc">点击「一键导入」按钮可自动扫描音频目录中的 .wav 文件并批量导入为音频条目，省去逐个手动添加的步骤。</p>
+      <p data-i18n="audio_import_single_desc">也可以点击「📥 导入」按钮单独导入一个音频文件。</p>
+    </section>
+
+    <!-- 保存与导出 -->
+    <section id="save-export">
+      <h2 data-i18n="section_save_export">💾 保存与导出</h2>
+      <h4 data-i18n="save_folder_title">保存到文件夹</h4>
+      <p data-i18n="save_folder_desc">点击「💾 保存」（或「📦 导出」→「📂 到文件夹」），选择目标文件夹后写入。当前版本每次保存都会弹出文件夹选择器。</p>
+      <h4 data-i18n="export_tbuddy_title">导出为 .tbuddy</h4>
+      <p data-i18n="export_tbuddy_desc">点击「📦 导出」→「📦 到 .tbuddy」生成压缩包（包内会以 Mod ID 作为根目录）。</p>
+      <h4 data-i18n="export_sbuddy_title">导出为 .sbuddy</h4>
+      <p data-i18n="export_sbuddy_desc">当同目录下存在 sbuddy-crypto.exe 时，会显示「🔒 到 .sbuddy」按钮。点击后先导出 .tbuddy 再由外部工具转换为加密的 .sbuddy 格式。</p>
+      <h4 data-i18n="saved_files_title">保存/导出的文件</h4>
+      <ul>
+        <li><code>manifest.json</code></li>
+        <li><code>bubble_style.json</code><span data-i18n="saved_files_bubble_note">（开启气泡样式时生成）</span></li>
+        <li><code>ai_tools.json</code><span data-i18n="saved_files_aitools_note">（开启 AI 工具时生成）</span></li>
+        <li><code>asset/sequence.json</code>, <code>asset/img.json</code><span data-i18n="saved_files_sequence_note">（序列帧 Mod）</span></li>
+        <li><code>asset/live2d.json</code><span data-i18n="saved_files_live2d_note">（Live2D Mod）</span></li>
+        <li><code>asset/pngremix.json</code><span data-i18n="saved_files_pngremix_note">（PngRemix Mod）</span></li>
+        <li><code>asset/3d.json</code><span data-i18n="saved_files_3d_note">（3D Mod）</span></li>
+        <li><code>asset/live2d/</code> <span data-i18n="live2d_export_all_files">下的所有文件（.model3.json、.moc3、贴图、.motion3.json、.exp3.json 等）将完整打包</span><span data-i18n="saved_files_live2d_mod_note">（Live2D Mod）</span></li>
+        <li><code>asset/*.pngRemix</code><span data-i18n="saved_files_pngremix_mod_note">（PngRemix Mod）</span></li>
+        <li><code>asset/3d/</code><span data-i18n="saved_files_3d_mod_note">（3D Mod）</span></li>
+        <li><code>text/[lang]/info.json</code>, <code>text/[lang]/speech.json</code><span data-i18n="saved_files_text_note">（开启文本对话时生成）</span></li>
+        <li><code>audio/[lang]/speech.json</code><span data-i18n="saved_files_audio_note">（开启音频对话时生成）</span></li>
+        <li><code>preview.(png/jpg/jpeg/webp)</code>, <code>icon.ico</code></li>
+      </ul>
+    </section>
+
+    <!-- Mod 目录结构 -->
+    <section id="structure">
+      <h2 data-i18n="section_structure">📁 Mod 目录结构</h2>
+      <h4 data-i18n="structure_sequence_title">序列帧 Mod (mod_type: "sequence")</h4>
+      <pre data-i18n="structure_sequence_code"></pre>
+      <h4 data-i18n="structure_live2d_title">Live2D Mod (mod_type: "live2d")</h4>
+      <pre data-i18n="structure_live2d_code"></pre>
+      <h4 data-i18n="structure_pngremix_title">PngRemix Mod (mod_type: "pngremix")</h4>
+      <pre data-i18n="structure_pngremix_code"></pre>
+      <h4 data-i18n="structure_threed_title">3D Mod (mod_type: "3d")</h4>
+      <pre data-i18n="structure_threed_code"></pre>
+    </section>
+    <section id="faq">
+      <h2 data-i18n="section_faq">❓ 常见问题</h2>
+      <h4 data-i18n="faq_browser_q">Q: 为什么无法打开文件夹？</h4>
+      <p data-i18n="faq_browser_a">A: 请使用 Chrome 86+ 或 Edge 86+ 浏览器。</p>
+      <h4 data-i18n="faq_anima_q">Q: 动画不显示？</h4>
+      <p data-i18n="faq_anima_a">A: 检查图片是否在正确目录，路径和帧配置是否正确。</p>
+      <h4 data-i18n="faq_lang_q">Q: 如何添加新语言？</h4>
+      <p data-i18n="faq_lang_a">A: 在「文本管理」或「音频管理」中点击「➕ 添加语言」。</p>
+      <h4 data-i18n="faq_preview_q">Q: 预览图支持哪些格式？</h4>
+      <p data-i18n="faq_preview_a">A: 支持 PNG、JPG、JPEG、WebP 四种格式。</p>
+      <h4 data-i18n="faq_file_protocol_q">Q: 为什么提示 i18n 资源加载失败 / file:// 被拦截？</h4>
+      <p data-i18n="faq_file_protocol_a">A: 请不要用 file:// 直接打开页面。双击 mod-tool/打开-mod编辑器.bat 启动本地服务器，再用浏览器访问 http://127.0.0.1:4174/。</p>
+    </section>
+
+    <div style="margin-top: 60px; padding-top: 40px; border-top: 1px solid #334155; text-align: center; color: #64748b;">
+      <p data-i18n="footer_copyright">TrayBuddy Mod Editor © 2024</p>
+      <p><a href="index.html" style="color: #6366f1;" data-i18n="back_to_editor">返回编辑器</a></p>
+    </div>
+
+  </main>
+
+  <script src="introduction-i18n.js?v=20260305b"></script>
+</body>
+</html>

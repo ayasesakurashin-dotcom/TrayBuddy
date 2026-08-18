@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title data-i18n="title">序列帧对齐工具</title>
+    <link rel="stylesheet" href="style.css">
+    <script src="../i18n-helper.js"></script>
+    <style>
+        /* Keep original styles but moved to style.css if possible, for now keep them here or move them */
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1 data-i18n="title">序列帧对齐工具</h1>
+        
+        <div class="controls">
+            <div class="control-panel">
+                <h3 data-i18n="img1_label">图片 1（固定基准）</h3>
+                <div class="input-group">
+                    <label data-i18n="select_img">选择图片</label>
+                    <div class="drop-zone" id="dropZone1">
+                        <div class="drop-zone-icon">📁</div>
+                        <div class="drop-zone-text" data-i18n="dropzone_text">拖拽图片到此处 或 <span>点击选择</span></div>
+                    </div>
+                    <input type="file" id="file1" accept="image/*">
+                    <div class="file-name" id="fileName1"></div>
+                </div>
+                <div class="input-group">
+                    <label data-i18n="opacity">透明度</label>
+                    <div class="slider-group">
+                        <input type="range" id="opacity1" min="0" max="100" value="100">
+                        <span class="slider-value" id="opacity1Value">100%</span>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="control-panel">
+                <h3 data-i18n="img2_label">图片 2（可调整）</h3>
+                <div class="input-group">
+                    <label data-i18n="select_img">选择图片</label>
+                    <div class="drop-zone" id="dropZone2">
+                        <div class="drop-zone-icon">📁</div>
+                        <div class="drop-zone-text" data-i18n="dropzone_text">拖拽图片到此处 或 <span>点击选择</span></div>
+                    </div>
+                    <input type="file" id="file2" accept="image/*">
+                    <div class="file-name" id="fileName2"></div>
+                </div>
+                <div class="input-group">
+                    <label data-i18n="opacity">透明度</label>
+                    <div class="slider-group">
+                        <input type="range" id="opacity2" min="0" max="100" value="50">
+                        <span class="slider-value" id="opacity2Value">50%</span>
+                    </div>
+                </div>
+                <div class="input-group">
+                    <label data-i18n="scale">缩放</label>
+                    <div class="slider-group">
+                        <input type="range" id="scale2" min="10" max="300" value="100">
+                        <span class="slider-value" id="scale2Value">100%</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="preview-container">
+            <div class="preview-header">
+                <h3 data-i18n="preview_area">预览区域</h3>
+                <div class="info-panel">
+                    <div class="info-item">
+                        <span class="info-label" data-i18n="offset_x_label">X:</span>
+                        <input type="number" class="info-input" id="offsetXInput" value="0">
+                    </div>
+                    <div class="info-item">
+                        <span class="info-label" data-i18n="offset_y_label">Y:</span>
+                        <input type="number" class="info-input" id="offsetYInput" value="0">
+
+                    </div>
+                    <div class="info-item">
+                        <span class="info-label" data-i18n="scale">缩放</span><span>:</span>
+                        <input type="number" class="info-input" id="scaleInput" value="100" min="10" max="300">
+                        <span style="color:#888">%</span>
+                    </div>
+                </div>
+                <button class="reset-btn" id="resetBtn" data-i18n="reset_pos">重置位置</button>
+                <button class="reset-btn" id="resetViewBtn" data-i18n="reset_view">重置视图</button>
+            </div>
+            
+            <div class="preview-area" id="previewArea">
+                <div class="preview-viewport" id="previewViewport">
+                    <div class="center-line-h"></div>
+                    <div class="center-line-v"></div>
+                    <div class="placeholder" id="placeholder">
+                        <svg viewBox="0 0 24 24" fill="currentColor">
+                            <path d="M21 19V5c0-1.1-.9-2-2-2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2zM8.5 13.5l2.5 3.01L14.5 12l4.5 6H5l3.5-4.5z"/>
+                        </svg>
+                        <div data-i18n="waiting_upload">请上传图片开始对齐</div>
+                    </div>
+                    <img id="image1" class="image-layer" style="display: none;">
+                    <img id="image2" class="image-layer" style="display: none;">
+                </div>
+            </div>
+            
+            <div class="preview-toolbar">
+                <span class="info-label" data-i18n="preview_zoom">预览缩放:</span>
+                <button class="zoom-btn" id="zoomOut">−</button>
+                <span class="info-value" id="viewZoomInfo">100%</span>
+                <button class="zoom-btn" id="zoomIn">+</button>
+                <button class="zoom-btn" id="zoomFit" data-i18n="zoom_fit">适应</button>
+            </div>
+            
+            <div class="tips">
+                <strong data-i18n="tips_title">操作提示：</strong>
+                <span data-i18n="tips_content">拖拽图片到对应区域上传 | 拖拽图片2调整位置 | 方向键微调(Shift加速) | Ctrl+滚轮缩放预览 | 滚轮缩放图片2</span>
+            </div>
+        </div>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>

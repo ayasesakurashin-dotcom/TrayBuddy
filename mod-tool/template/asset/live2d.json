@@ -1,0 +1,21 @@
+{
+  "schema_version": 1,
+  "model": {
+    "name": "",
+    "base_dir": "asset/live2d/",
+    "model_json": "",
+    "scale": 1,
+    "textures_dir": "",
+    "motions_dir": "",
+    "expressions_dir": "",
+    "physics_json": "",
+    "pose_json": "",
+    "breath_json": "",
+    "eye_blink": true,
+    "lip_sync": true
+  },
+  "motions": [],
+  "expressions": [],
+  "states": [],
+  "background_layers": []
+}

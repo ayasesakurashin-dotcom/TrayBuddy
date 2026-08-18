@@ -1,0 +1,277 @@
+{
+  "schema_version": 1,
+  "model": {
+    "name": "cat",
+    "base_dir": "asset/live2d/",
+    "model_json": "cat.model3.json",
+    "textures_dir": "demomodel.1024",
+    "motions_dir": "",
+    "expressions_dir": "",
+    "physics_json": "",
+    "pose_json": "",
+    "eye_blink": true,
+    "lip_sync": true,
+    "scale": 1.3,
+    "breath_json": ""
+  },
+  "motions": [
+    {
+      "name": "live2d_motion1",
+      "file": "live2d_motion1.motion3.json",
+      "group": "CAT_motion",
+      "priority": "Normal",
+      "fade_in_ms": 0,
+      "fade_out_ms": 0,
+      "loop": false
+    },
+    {
+      "name": "live2d_motion2",
+      "file": "live2d_motion2.motion3.json",
+      "group": "CAT_motion",
+      "priority": "Normal",
+      "fade_in_ms": 0,
+      "fade_out_ms": 0,
+      "loop": false
+    }
+  ],
+  "expressions": [
+    {
+      "name": "live2d_expression0.exp3.json",
+      "file": "live2d_expression0.exp3.json"
+    },
+    {
+      "name": "live2d_expression1.exp3.json",
+      "file": "live2d_expression1.exp3.json"
+    },
+    {
+      "name": "live2d_expression2.exp3.json",
+      "file": "live2d_expression2.exp3.json"
+    }
+  ],
+  "states": [
+    {
+      "state": "live2d_motion1",
+      "motion": "live2d_motion1",
+      "expression": "",
+      "scale": 1,
+      "offset_x": 0,
+      "offset_y": 0
+    },
+    {
+      "state": "live2d_motion2",
+      "motion": "live2d_motion2",
+      "expression": "",
+      "scale": 1,
+      "offset_x": 0,
+      "offset_y": 0
+    }
+  ],
+  "background_layers": [
+    {
+      "name": "background",
+      "file": "resources/background.png",
+      "layer": "behind",
+      "scale": 1,
+      "offset_x": 0,
+      "offset_y": 0,
+      "events": [],
+      "audio": "",
+      "dir": "resources"
+    },
+    {
+      "name": "KeyA",
+      "file": "resources/left-keys/KeyA.png",
+      "layer": "front",
+      "scale": 1,
+      "offset_x": 0,
+      "offset_y": 0,
+      "events": [
+        "keydown:KeyA"
+      ],
+      "audio": "",
+      "dir": "resources/left-keys"
+    },
+    {
+      "name": "KeyD",
+      "file": "resources/left-keys/KeyD.png",
+      "layer": "front",
+      "scale": 1,
+      "offset_x": 0,
+      "offset_y": 0,
+      "events": [
+        "keydown:KeyD"
+      ],
+      "audio": "",
+      "dir": "resources/left-keys"
+    },
+    {
+      "name": "KeyE",
+      "file": "resources/left-keys/KeyE.png",
+      "layer": "front",
+      "scale": 1,
+      "offset_x": 0,
+      "offset_y": 0,
+      "events": [
+        "keydown:KeyE"
+      ],
+      "audio": "",
+      "dir": "resources/left-keys"
+    },
+    {
+      "name": "KeyR",
+      "file": "resources/left-keys/KeyR.png",
+      "layer": "front",
+      "scale": 1,
+      "offset_x": 0,
+      "offset_y": 0,
+      "events": [
+        "keydown:KeyR"
+      ],
+      "audio": "",
+      "dir": "resources/left-keys"
+    },
+    {
+      "name": "KeyQ",
+      "file": "resources/left-keys/KeyQ.png",
+      "layer": "front",
+      "scale": 1,
+      "offset_x": 0,
+      "offset_y": 0,
+      "events": [
+        "keydown:KeyQ"
+      ],
+      "audio": "",
+      "dir": "resources/left-keys"
+    },
+    {
+      "name": "KeyS",
+      "file": "resources/left-keys/KeyS.png",
+      "layer": "front",
+      "scale": 1,
+      "offset_x": 0,
+      "offset_y": 0,
+      "events": [
+        "keydown:KeyS"
+      ],
+      "audio": "",
+      "dir": "resources/left-keys"
+    },
+    {
+      "name": "KeyW",
+      "file": "resources/left-keys/KeyW.png",
+      "layer": "front",
+      "scale": 1,
+      "offset_x": 0,
+      "offset_y": 0,
+      "events": [
+        "keydown:KeyW"
+      ],
+      "audio": "",
+      "dir": "resources/left-keys"
+    },
+    {
+      "name": "Space",
+      "file": "resources/left-keys/Space.png",
+      "layer": "front",
+      "scale": 1,
+      "offset_x": 0,
+      "offset_y": 0,
+      "events": [
+        "keydown:Space"
+      ],
+      "audio": "",
+      "dir": "resources/left-keys"
+    },
+    {
+      "name": "Num1",
+      "file": "resources/left-keys/Num1.png",
+      "layer": "front",
+      "scale": 1,
+      "offset_x": 0,
+      "offset_y": 0,
+      "events": [
+        "keydown:Digit1"
+      ],
+      "audio": "1.C(do)",
+      "dir": "resources/left-keys"
+    },
+    {
+      "name": "Num2",
+      "file": "resources/left-keys/Num2.png",
+      "layer": "front",
+      "scale": 1,
+      "offset_x": 0,
+      "offset_y": 0,
+      "events": [
+        "keydown:Digit2"
+      ],
+      "audio": "2.D(re)",
+      "dir": "resources/left-keys"
+    },
+    {
+      "name": "Num3",
+      "file": "resources/left-keys/Num3.png",
+      "layer": "front",
+      "scale": 1,
+      "offset_x": 0,
+      "offset_y": 0,
+      "events": [
+        "keydown:Digit3"
+      ],
+      "audio": "3.E(mi)",
+      "dir": "resources/left-keys"
+    },
+    {
+      "name": "Num4",
+      "file": "resources/left-keys/Num4.png",
+      "layer": "front",
+      "scale": 1,
+      "offset_x": 0,
+      "offset_y": 0,
+      "events": [
+        "keydown:Digit4"
+      ],
+      "audio": "4.F(fa)",
+      "dir": "resources/left-keys"
+    },
+    {
+      "name": "Num5",
+      "file": "resources/left-keys/Num5.png",
+      "layer": "front",
+      "scale": 1,
+      "offset_x": 0,
+      "offset_y": 0,
+      "events": [
+        "keydown:Digit5"
+      ],
+      "audio": "5.G(sol)",
+      "dir": "resources/left-keys"
+    },
+    {
+      "name": "Num6",
+      "file": "resources/left-keys/Num6.png",
+      "layer": "front",
+      "scale": 1,
+      "offset_x": 0,
+      "offset_y": 0,
+      "events": [
+        "keydown:Digit6"
+      ],
+      "audio": "6.A(la)",
+      "dir": "resources/left-keys"
+    },
+    {
+      "name": "Num7",
+      "file": "resources/left-keys/Num7.png",
+      "layer": "front",
+      "scale": 1,
+      "offset_x": 0,
+      "offset_y": 0,
+      "events": [
+        "keydown:Digit7"
+      ],
+      "audio": "7.B(si)",
+      "dir": "resources/left-keys"
+    }
+  ]
+}

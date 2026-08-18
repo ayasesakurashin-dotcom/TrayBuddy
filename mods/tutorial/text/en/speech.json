@@ -1,0 +1,67 @@
+[
+  {
+    "name": "text1",
+    "text": "Welcome to TrayBuddy!\nLet me give you a brief introduction to this app.",
+    "duration": 3
+  },
+  {
+    "name": "text2",
+    "text": "TrayBuddy is a multi-model desktop pet app with encryption support.",
+    "duration": 3
+  },
+  {
+    "name": "text3",
+    "text": "This program aims to manage various desktop pet resources within a single application.",
+    "duration": 3
+  },
+  {
+    "name": "text4",
+    "text": "The author wanted to use multiple desktop pets but didn't want to install many separate programs, so this project was born.",
+    "duration": 3
+  },
+  {
+    "name": "text5",
+    "text": "You can right-click -> Mod Management to switch between different desktop pets.",
+    "duration": 3
+  },
+  {
+    "name": "text6",
+    "text": "This program supports encrypting your desktop pet packages.\nEncrypted packages can only be parsed by this program, protecting the animation resources inside.",
+    "duration": 3
+  },
+  {
+    "name": "text7",
+    "text": "This is perfect for creators who want to showcase their animation models without worrying about unauthorized use.",
+    "duration": 3
+  },
+  {
+    "name": "text8",
+    "text": "In addition, this program offers various extra features.",
+    "duration": 3
+  },
+  {
+    "name": "text10",
+    "text": "We have a Mod editor that lets you customize combinations of animations, text, and voice.",
+    "duration": 3
+  },
+  {
+    "name": "text9",
+    "text": "We have Mod version management, supporting iterative updates for your creations.",
+    "duration": 3
+  },
+  {
+    "name": "text11",
+    "text": "The program also supports memo and scheduled reminder features.",
+    "duration": 3
+  },
+  {
+    "name": "text12",
+    "text": "We will keep improving and add more one-click Mod generation tools in the future.",
+    "duration": 3
+  },
+  {
+    "name": "text13",
+    "text": "Finally, we hope this app can truly bring you joy.",
+    "duration": 3
+  }
+]
