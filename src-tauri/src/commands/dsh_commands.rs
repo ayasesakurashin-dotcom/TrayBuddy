@@ -55,7 +55,7 @@ pub struct DshAssets {
 #[tauri::command]
 pub fn dsh_get_assets(app: AppHandle) -> DshAssets {
     DshAssets {
-        completed_audio: dsh::resolve_dsh_asset_path(&app, "ema_amazing.ogg"),
+        completed_audio: dsh::resolve_dsh_asset_path(&app, "evening.wav"),
     }
 }
 

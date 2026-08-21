@@ -15,7 +15,7 @@
 | **手动启动 DSH** | 右键桌宠（或系统托盘图标）→ `DeepSeek Harness → 启动 DSH`，在**隐藏终端**中运行 `dsh web` 启动服务器；**不自动打开浏览器**。检测到已有 DSH 在运行时直接接入，不重复启动 |
 | **手动停止 DSH** | 菜单 `停止 DSH` 终止由桌宠启动的进程树；用户自行启动的实例不会被误杀（仅解除关联） |
 | **DSH 交互面板** | 右键桌宠 → `打开交互面板`，在**桌宠旁边**弹出 DSH 官方 Web UI 窗口（完整功能：会话、工具、模型选择、子代理、目标、设置等），窗口大小适中、可缩放、屏幕边缘自动翻转停靠 |
-| **任务完成提醒** | 桌宠通过 DSH 的 `host/session-status` 事件流（WebSocket `/api/events.host`）实时感知 Agent 状态：所有 Agent 由运行转入空闲 ⇒ 判定任务完成，**播放樱羽艾玛语音**（`static/dsh/ema_amazing.ogg`，来自 TrayBuddy ema mod 的 `amazing.ogg`）并弹出「任务完成啦~」气泡；出错时弹出失败气泡 |
+| **任务完成提醒** | 桌宠通过 DSH 的 `host/session-status` 事件流（WebSocket `/api/events.host`）实时感知 Agent 状态：所有 Agent 由运行转入空闲 ⇒ 判定任务完成，**系统级播放樱羽艾玛语音**（`static/dsh/evening.wav`，来自 TrayBuddy ema mod 的 `evening.wav`）并弹出「任务完成啦~」气泡；出错时弹出失败气泡 |
 | **兼容用户数据** | 沿用原 TrayBuddy 的应用标识（`com.traybuddy.cafel`）与存储路径，安装新版后原设置、Mod、备忘录、提醒等用户数据全部保留 |
 | **不改变自启动** | 桌宠的开机自启功能保持原样未改动；DSH **不会**随开机自启，始终由用户手动启动 |
 
@@ -61,8 +61,9 @@ traybuddy.exe --dsh-browser   :: 在浏览器打开
    - 所有会话全部回到 idle 且期间无 agent-error ⇒ 发出 `completed` 通知；
    - 期间出现 agent-error ⇒ 发出 `failed` 通知。
    断线自动重连；DSH 意外退出时自动感知并同步菜单状态。
-5. **提醒呈现**：后端向桌宠窗口发 `dsh-notify` 事件 → 桌宠弹出气泡，
-   `completed` 时通过打包资源路径 + `convertFileSrc` 播放 `ema_amazing.ogg`（遵循桌宠音量/静音设置）。
+5. **提醒呈现**：后端向桌宠窗口发 `dsh-notify` 事件 → 桌宠弹出气泡；
+   `completed` 时由后端用 Windows `PlaySoundW` **系统级播放** `evening.wav`
+   （不依赖 WebView2 自动播放/`convertFileSrc`，可靠可闻；遵循桌宠静音设置）。
 
 诊断日志写入 `%APPDATA%\com.traybuddy.cafel\dsh.log`。
 

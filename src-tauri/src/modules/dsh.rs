@@ -740,6 +740,8 @@ fn handle_host_frame(app: &AppHandle, text: &str) {
                         events::DSH_NOTIFY,
                         serde_json::json!({ "kind": "completed" }),
                     );
+                    // 播放完成提示音（系统级，不依赖 WebView2 自动播放）
+                    play_completion_sound(&app);
                 }
             }
         }
@@ -959,6 +961,58 @@ pub fn resolve_dsh_asset_path(app: &AppHandle, rel: &str) -> String {
         }
     }
     String::new()
+}
+
+/// 播放任务完成提示音（樱羽艾玛素材 `evening.wav`）。
+///
+/// 使用 Windows 系统级播放（`PlaySoundW`），与 WebView2/前端无关，
+/// 因此不受浏览器自动播放限制影响，也无需前端调用 `convertFileSrc`。
+/// 尊重桌宠的静音设置（`no_audio_mode`）。
+pub fn play_completion_sound(app: &AppHandle) {
+    // 静音模式下不播放
+    {
+        let state: tauri::State<crate::app_state::AppState> = app.state();
+        let storage = state.storage.lock().unwrap();
+        if storage.data.settings.no_audio_mode {
+            return;
+        }
+    }
+
+    let path = resolve_dsh_asset_path(app, "evening.wav");
+    if path.is_empty() {
+        dsh_log(app, "completion sound asset not found (evening.wav)");
+        return;
+    }
+
+    #[cfg(target_os = "windows")]
+    {
+        use windows::core::PCWSTR;
+        use windows::Win32::Foundation::HMODULE;
+        use windows::Win32::Media::Audio::{
+            PlaySoundW, SND_ASYNC, SND_FILENAME, SND_NODEFAULT,
+        };
+
+        let wide: Vec<u16> = path.encode_utf16().chain(std::iter::once(0)).collect();
+        let ok = unsafe {
+            PlaySoundW(
+                PCWSTR::from_raw(wide.as_ptr()),
+                HMODULE(std::ptr::null_mut()),
+                SND_FILENAME | SND_ASYNC | SND_NODEFAULT,
+            )
+        };
+        if ok.as_bool() {
+            dsh_log(app, "completion sound played");
+        } else {
+            dsh_log(app, "completion sound playback failed");
+        }
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    {
+        // 非 Windows 平台暂不播放系统音（占位）
+        let _ = path;
+        dsh_log(app, "completion sound skipped (non-Windows)");
+    }
 }
 
 // ========================================================================= //

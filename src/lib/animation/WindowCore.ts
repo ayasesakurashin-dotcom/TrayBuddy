@@ -1,4 +1,4 @@
-import { invoke, convertFileSrc } from "@tauri-apps/api/core";
+import { invoke } from "@tauri-apps/api/core";
 import { listen, emit } from "@tauri-apps/api/event";
 import { getCurrentWindow, cursorPosition, LogicalPosition } from "@tauri-apps/api/window";
 import { initI18n, destroyI18n, onLangChange, t as i18nT } from "$lib/i18n";
@@ -1225,7 +1225,7 @@ export function createWindowCore(options: {
       // ========== DeepSeek Harness 联动通知 ==========
       // 后端监控 DSH 的 Agent 运行状态，通过 dsh-notify 推送
       // ready / completed / failed / down 四类通知：
-      // - completed：任务完成 → 气泡 + 播放樱羽艾玛完成提示音
+      // - completed：任务完成 → 弹出气泡（提示音由后端系统级播放，见 modules/dsh.rs）
       // - 其余：仅气泡提示
       unlistenDshNotify = await listen<{ kind?: string }>(
         "dsh-notify",
@@ -1234,14 +1234,12 @@ export function createWindowCore(options: {
           const bm = refs.getBubbleManager();
 
           let text: string | null = null;
-          let playSound = false;
           switch (kind) {
             case "ready":
               text = i18nT("dsh.bubbleReady");
               break;
             case "completed":
               text = i18nT("dsh.bubbleCompleted");
-              playSound = true;
               break;
             case "failed":
               text = i18nT("dsh.bubbleFailed");
@@ -1258,20 +1256,6 @@ export function createWindowCore(options: {
               bm.show({ text, duration: 4200 });
             } catch (err) {
               console.warn("[DSH] failed to show bubble:", err);
-            }
-          }
-
-          if (playSound && audioManager) {
-            try {
-              const assets = await invoke<{ completed_audio?: string }>(
-                "dsh_get_assets",
-              );
-              const path = assets?.completed_audio;
-              if (path) {
-                await audioManager.playUrl(convertFileSrc(path));
-              }
-            } catch (err) {
-              console.warn("[DSH] failed to play completion audio:", err);
             }
           }
         },
