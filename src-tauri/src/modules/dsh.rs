@@ -324,6 +324,9 @@ fn kill_process_tree(child: &mut std::process::Child) {
 /// 同步健康检查（供 sync 命令使用）
 fn dsh_healthy_blocking(port: u16) -> bool {
     let client = match reqwest::blocking::Client::builder()
+        // 禁用系统代理：127.0.0.1 本机回环健康检查必须直连，否则开启 Clash 等
+        // 系统代理时探测会被误投递到代理，导致“浏览器正常但桌宠误判 DSH 未启动”。
+        .no_proxy()
         .timeout(Duration::from_secs(3))
         .build()
     {
@@ -339,6 +342,8 @@ fn dsh_healthy_blocking(port: u16) -> bool {
 /// 异步健康检查（供监控任务使用）
 async fn dsh_healthy(port: u16) -> bool {
     let client = reqwest::Client::builder()
+        // 禁用系统代理：本机回环健康检查必须直连（同上）。
+        .no_proxy()
         .timeout(Duration::from_secs(3))
         .build();
     match client {

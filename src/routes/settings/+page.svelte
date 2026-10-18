@@ -13,6 +13,7 @@
 
     import { onMount, onDestroy } from "svelte";
     import Settings from "$lib/components/Settings.svelte";
+    import CompanionSettings from "$lib/components/CompanionSettings.svelte";
     import { getCurrentWindow } from "@tauri-apps/api/window";
     import { t, setupI18nWithUpdate } from "$lib/i18n";
 
@@ -41,6 +42,7 @@
 
 <div class="settings-page">
     <Settings />
+    <CompanionSettings />
 </div>
 
 <style>

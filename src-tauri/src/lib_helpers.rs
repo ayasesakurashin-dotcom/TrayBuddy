@@ -1520,6 +1520,35 @@ pub(crate) fn inner_build_tray_menu(app: &tauri::AppHandle) -> tauri::Result<Men
         true,
         &[&dsh_start_i, &dsh_stop_i, &dsh_panel_i, &dsh_browser_i],
     )?;
+
+    // ========== Telegram 远程通道菜单 ==========
+    let tg_state = {
+        let mgr = app_state.telegram.lock().unwrap();
+        mgr.status().state
+    };
+    let tg_active = tg_state == crate::modules::telegram::TelegramState::Running
+        || tg_state == crate::modules::telegram::TelegramState::Starting;
+    let tg_start_i = MenuItem::with_id(
+        app,
+        "telegram_start",
+        "启动远程通道",
+        !tg_active,
+        None::<&str>,
+    )?;
+    let tg_stop_i = MenuItem::with_id(
+        app,
+        "telegram_stop",
+        "停止远程通道",
+        tg_active,
+        None::<&str>,
+    )?;
+    let tg_submenu = tauri::menu::Submenu::with_items(
+        app,
+        "远程通道",
+        true,
+        &[&tg_start_i, &tg_stop_i],
+    )?;
+
     let mod_i = MenuItem::with_id(
       app,
       "mod",
@@ -1586,6 +1615,8 @@ pub(crate) fn inner_build_tray_menu(app: &tauri::AppHandle) -> tauri::Result<Men
 
     let sep3 = PredefinedMenuItem::separator(app)?;
 
+    let companion_submenu = crate::modules::companion::menu_items(app)?;
+
     Menu::with_items(
         app,
         &[
@@ -1599,7 +1630,9 @@ pub(crate) fn inner_build_tray_menu(app: &tauri::AppHandle) -> tauri::Result<Men
             &memo_i,
             &reminder_i,
 
+            &companion_submenu,
             &dsh_submenu,
+            &tg_submenu,
             &sep2,
             &streamer_mode_i,
             &show_widget_i,
@@ -1617,6 +1650,9 @@ pub(crate) fn inner_build_tray_menu(app: &tauri::AppHandle) -> tauri::Result<Men
 pub(crate) fn handle_menu_event(app: &tauri::AppHandle, id: &str) {
 
     match id {
+        "companion_input" | "companion_speech" | "companion_observation" | "companion_once" | "companion_stop" => {
+            crate::modules::companion::menu_event(app, id);
+        }
         // ========== DeepSeek Harness 联动 ==========
         "dsh_start" => {
             let _ = crate::modules::dsh::start_dsh(app.clone());
@@ -1629,6 +1665,12 @@ pub(crate) fn handle_menu_event(app: &tauri::AppHandle, id: &str) {
         }
         "dsh_browser" => {
             let _ = crate::modules::dsh::open_dsh_in_browser(app);
+        }
+        "telegram_start" => {
+            let _ = crate::modules::telegram::start_telegram(app.clone());
+        }
+        "telegram_stop" => {
+            let _ = crate::modules::telegram::stop_telegram(app.clone());
         }
         "open_mod_tool_dir" | "open_other_tool_dir" => {
             let subdir = if id == "open_mod_tool_dir" {

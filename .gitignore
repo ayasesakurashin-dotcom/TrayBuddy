@@ -27,6 +27,9 @@ vite.config.ts.timestamp-*
 
 *.log
 *.txt
+!src-tauri/src/modules/companion/persona.txt
+!check-tool/bundle_analyzer/使用说明.txt
+!check-tool/memory_profile/使用说明.txt
 
 text_list/data
 
@@ -36,3 +39,12 @@ mod-tool/sbuddy-crypto.exe
 # DSH build artifacts
 /release
 /tauri-build*.log
+
+# Local companion state and private diagnostics (never source assets)
+*.key
+*.sqlite
+*.sqlite-wal
+*.sqlite-shm
+/companion/
+/storage.json
+/docs/traybuddy-userdata-loss-2026-10-09.md

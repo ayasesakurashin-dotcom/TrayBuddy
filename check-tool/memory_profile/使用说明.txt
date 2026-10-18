@@ -1,0 +1,203 @@
+============================================================================
+TrayBuddy Memory Profiler - Usage Guide
+============================================================================
+
+Overview:
+  This tool analyzes memory consumption of TrayBuddy's Release version.
+  It automatically builds, launches, monitors memory, and generates reports.
+
+============================================================================
+Quick Start
+============================================================================
+
+Method 1: Double-click
+  Double-click run.bat for full check (build + monitor 60s)
+
+Method 2: Command line
+  cd <project_root>\check-tool\memory_profile
+  
+  # Full check (build + monitor 60s)
+  .\run.bat
+  
+  # Quick check (skip build, monitor 60s)
+  .\run.bat quick
+  
+  # Custom duration (skip build, monitor 30s)
+  .\run.bat quick 30
+
+Method 3: PowerShell direct
+  cd <project_root>\check-tool\memory_profile
+  
+  # Full check
+  powershell -ExecutionPolicy Bypass -File .\profiler.ps1
+  
+  # Skip build, monitor 120s
+  powershell -ExecutionPolicy Bypass -File .\profiler.ps1 -SkipBuild -Duration 120
+  
+  # Custom sample interval (every 5 seconds)
+  powershell -ExecutionPolicy Bypass -File .\profiler.ps1 -SampleInterval 5
+
+============================================================================
+Parameters
+============================================================================
+
+-Duration <seconds>    Monitoring duration, default 60 seconds
+-SampleInterval <sec>  Sampling interval, default 2 seconds
+-SkipBuild            Skip build step (use existing Release version)
+-Verbose              Show detailed output
+
+============================================================================
+Output Files
+============================================================================
+
+1. memory_report_yyyyMMdd_HHmmss.txt
+   Detailed text report including:
+   - Per-process memory statistics (avg/min/max)
+   - Summary statistics
+   - Memory growth trend
+   - Process type analysis
+   - Optimization suggestions
+
+2. memory_samples_yyyyMMdd_HHmmss.csv
+   Raw sampling data in CSV format, can be opened with Excel
+   Columns: Timestamp, ElapsedSec, ProcessName, PID, WorkingSetMB, PrivateMemMB, 
+            VirtualMemMB, Handles, Threads, GDIObjects, USERObjects, DeltaMB, MemRateMB_s
+
+============================================================================
+Memory Metrics Explained
+============================================================================
+
+Working Set:
+  Physical memory currently used by the process, including shared memory.
+  This is the "Memory" value shown in Task Manager.
+
+Private Memory:
+  Memory exclusively used by the process, not shared with others.
+  More accurately reflects actual memory consumption.
+
+Virtual Memory:
+  Size of the process's virtual address space.
+
+Handles:
+  Number of system objects opened (files, registry, events, etc.)
+
+Threads:
+  Number of threads in the process.
+
+GDI Objects:
+  Graphics Device Interface objects (bitmaps, fonts, brushes, etc.)
+  High or continuously increasing count may indicate graphics resource leak.
+  Typical value: < 500. Warning threshold: > 1000.
+
+USER Objects:
+  User interface objects (windows, menus, cursors, etc.)
+  High count may indicate UI element leak.
+
+DeltaMB:
+  Memory change since last sample (in MB).
+  Positive = memory increased, Negative = memory decreased.
+
+MemRateMB_s:
+  Memory change rate per second (MB/s).
+  Helps identify sudden memory spikes vs gradual growth.
+
+============================================================================
+Memory Spike Detection
+============================================================================
+
+The tool automatically detects and reports memory spikes (> 30MB increase).
+These spikes are displayed:
+  1. In real-time during monitoring (yellow warning)
+  2. In the final report under "Memory Spike Events"
+
+Common causes of memory spikes:
+  - Loading large images/spritesheets
+  - Mod switching without proper cleanup
+  - Cache miss causing duplicate resource loading
+  - Canvas creation without destruction
+
+============================================================================
+Frontend Memory Event Logs
+============================================================================
+
+IMPORTANT: Memory debug features are ONLY enabled when launched by this tool!
+The profiler sets TRAYBUDDY_MEMORY_DEBUG=1 environment variable, which:
+  - Enables memory event logging
+  - Enables cache statistics tracking
+  - Exposes debug functions to window object
+
+Normal users will NOT see any of these debug features.
+
+The app records memory-related events in the frontend for detailed analysis.
+These logs track:
+  - Image cache hits/misses
+  - Image load events
+  - Animation/state switches
+  - Cache evictions and clears
+
+To retrieve the logs manually (when launched by profiler):
+
+1. Open DevTools in the animation window (F12 or right-click -> Inspect)
+2. Go to Console tab
+3. Run one of these commands:
+
+   // Get all memory logs as array
+   window.__getMemoryLogs()
+
+   // Export logs as CSV string
+   window.__exportMemoryLogsCSV()
+
+   // Copy CSV to clipboard for analysis
+   copy(window.__exportMemoryLogsCSV())
+
+   // Get cache statistics (hit rate, misses, evictions)
+   window.__getCacheStats()
+   // Returns: { hits: 10, misses: 3, evictions: 0, hitRate: "76.9%" }
+
+The logs show real-time events like:
+  [Memory] 0s | SWITCH_STATE [Cache: 0/8]  | 切换状态: idle, playOnce=false
+  [Memory] 0s | LOAD_IMAGE [Cache: 0/8] ✗MISS | 加载图片: img/idle.webp (命中率: 0.0%)
+  [Memory] 1s | IMAGE_LOADED [Cache: 1/8]  | 图片加载完成: img/idle.webp
+  [Memory] 5s | SWITCH_STATE [Cache: 1/8]  | 切换状态: morning, playOnce=true
+  [Memory] 5s | LOAD_IMAGE [Cache: 1/8] ✗MISS | 加载图片: img/wave.webp (命中率: 50.0%)
+  [Memory] 6s | IMAGE_LOADED [Cache: 2/8]  | 图片加载完成: img/wave.webp
+
+This helps correlate memory spikes with specific frontend operations.
+
+============================================================================
+Analyzing Cache Hit Rate
+============================================================================
+
+A low cache hit rate indicates inefficient resource usage:
+  - 0-30%: Poor - images are being reloaded frequently
+  - 30-60%: Fair - some reuse, but room for improvement
+  - 60-90%: Good - effective caching
+  - 90%+: Excellent - minimal redundant loads
+
+If hit rate is low, check:
+  1. Are animations switching too frequently?
+  2. Is the cache size (8) appropriate for the number of unique images?
+  3. Are URLs consistent (no query strings or cache busters)?
+
+============================================================================
+Typical Output Example
+============================================================================
+
+Memory Distribution:
+  Main Process (TrayBuddy.exe):     73.71 MB (16.3%)
+  WebView2 Processes (GPU/Render):  379.52 MB (83.7%)
+
+Note: For Tauri apps, WebView2 typically consumes most memory.
+WebView2 includes multiple subprocesses: Browser, GPU, Renderer, Utility, etc.
+
+============================================================================
+Notes
+============================================================================
+
+1. First run requires building, may take several minutes
+2. Ensure no other TrayBuddy instances are running
+3. If build fails, run "pnpm tauri build" in project root to check issues
+4. Do not manually close the program during monitoring
+5. Due to Chinese path encoding issues, run from English path if needed
+
+============================================================================

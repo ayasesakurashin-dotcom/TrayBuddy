@@ -13,6 +13,7 @@
 //! - [`utils`] - 公共工具类 (HTTP, FS, Window)
 
 pub mod ai_tool_manager;
+pub mod companion;
 pub mod constants;
 pub mod dsh;
 pub mod environment;
@@ -26,6 +27,7 @@ pub mod screenshot;
 pub mod state;
 pub mod storage;
 pub mod system_observer;
+pub mod telegram;
 pub mod trigger;
 
 pub mod utils;

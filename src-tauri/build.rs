@@ -1,4 +1,13 @@
 fn main() {
+    println!("cargo:rerun-if-env-changed=CARGO_FEATURE_CUSTOM_PROTOCOL");
+    if std::env::var("PROFILE").as_deref() == Ok("release")
+        && std::env::var_os("CARGO_FEATURE_CUSTOM_PROTOCOL").is_none()
+    {
+        panic!(
+            "Release builds must embed the frontend: use tauri build, or cargo build --release --features custom-protocol"
+        );
+    }
+
     // 检查外部工具可执行文件是否存在
     // 找到则通过 include_bytes! 嵌入到最终二进制中
 

@@ -1,4 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
+import { attachCompanion } from "$lib/companion/presentation";
 import { listen, emit } from "@tauri-apps/api/event";
 import { getCurrentWindow, cursorPosition, LogicalPosition } from "@tauri-apps/api/window";
 import { initI18n, destroyI18n, onLangChange, t as i18nT } from "$lib/i18n";
@@ -176,6 +177,7 @@ export function createWindowCore(options: {
   const windowType: WindowType = options.windowType ?? "sequence";
 
   let audioManager: AudioManager | null = null;
+  let companion: Awaited<ReturnType<typeof attachCompanion>> | null = null;
   let triggerManager: TriggerManager | null = null;
 
   type PendingBranchSelection = {
@@ -1009,7 +1011,7 @@ export function createWindowCore(options: {
 
     if (playSessionToken !== token) return;
 
-    if (audioManager && state.audio) {
+    if (audioManager && state.audio && !companion?.isActive()) {
       if (!playOnce) {
         const success = await audioManager.play(state.audio, undefined, true);
         if (playSessionToken !== token) return;
@@ -1035,7 +1037,10 @@ export function createWindowCore(options: {
 
     if (playSessionToken !== token) return;
 
-    if (playOnce && (state.text || (state.branch && state.branch.length > 0))) {
+    if (companion?.isActive()) {
+      bubbleComplete = true;
+      checkComplete();
+    } else if (playOnce && (state.text || (state.branch && state.branch.length > 0))) {
       bubbleSessionToken = token;
       await showBubble(state, token);
     } else {
@@ -1147,6 +1152,12 @@ export function createWindowCore(options: {
       await syncDisplayMode(bindings.getShowCharacter());
 
       audioManager = await getAudioManager();
+      companion = await attachCompanion({
+        audio: audioManager,
+        show: (config) => refs.getBubbleManager()?.show(config),
+        allowed: () => bindings.getShowCharacter() && !bindings.getSilenceMode(),
+        releasePreset: () => { pendingBranchSelection = null; audioComplete = true; bubbleComplete = true; checkComplete(); },
+      });
       triggerManager = getTriggerManager();
 
       const characterConfig: CharacterConfig | null = await invoke(
@@ -1427,6 +1438,7 @@ export function createWindowCore(options: {
     stopCursorPolling();
 
 
+    companion?.destroy();
     audioManager?.destroy();
     triggerManager?.destroy();
     // 重置单例，确保下次 getXxxManager() 不会返回已销毁的实例

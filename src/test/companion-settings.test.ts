@@ -1,0 +1,50 @@
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { cleanup, fireEvent, render } from '@testing-library/svelte';
+import { flushAsync } from './test-utils';
+import type { CompanionView } from '$lib/companion/types';
+const mocks = vi.hoisted(() => ({ invoke: vi.fn() }));
+vi.mock('@tauri-apps/api/core', () => ({ invoke: mocks.invoke }));
+vi.mock('@tauri-apps/api/event', () => ({ listen: vi.fn(async () => () => {}) }));
+import CompanionSettings from '$lib/components/CompanionSettings.svelte';
+
+function fixture(): CompanionView {
+  const empty = {base_url: '', model: '', has_key: false};
+  return { bank_id: 'ema-companion-11111111-1111-4111-9111-111111111111', status: '就绪', pending: 0, busy: false, summary: '', settings: {
+    schema_version: 1, input_enabled: true, input_collapsed: false, speech_enabled: true, observation_enabled: false, memory_enabled: true,
+    chat: {base_url: 'https://api.deepseek.com', model: 'deepseek-flash', has_key: true}, vision: {...empty},
+    speech: {base_url: 'https://api.fish.audio', model: 's2.1-pro-free', has_key: false},
+    memory: {base_url: 'http://127.0.0.1:18088', model: '', has_key: false},
+    voice_id: '', speech_speed: 1, observation_interval_secs: 300, capture_scope: 'foreground', capture_region: [0,0,800,600], excluded_windows: [], reply_max_chars: 120, nickname: '',
+  }};
+}
+describe('companion settings boundaries', () => {
+  beforeEach(() => { cleanup(); mocks.invoke.mockReset(); mocks.invoke.mockImplementation(async (command: string, args?: any) => {
+    if (command === 'companion_get') return fixture();
+    if (command === 'companion_save') return {...fixture(), settings: args.settings};
+    return [];
+  }); });
+  it('shows the bank as read-only and keeps configured API secrets out of text inputs', async () => {
+    const page = render(CompanionSettings);
+    await flushAsync();
+    expect(page.getByText(fixture().bank_id)).toBeTruthy();
+    expect(page.queryByDisplayValue(fixture().bank_id)).toBeNull();
+    const password = page.container.querySelector<HTMLInputElement>('input[type="password"]');
+    expect(password?.value).toBe('');
+    expect(password?.placeholder).toContain('留空保持原密钥');
+    const observation = page.getByLabelText('定时屏幕观察') as HTMLInputElement;
+    expect(observation.checked).toBe(false);
+  });
+  it('saves short-reply settings without allowing a bank field to be submitted', async () => {
+    const page = render(CompanionSettings);
+    await flushAsync();
+    expect(page.getByLabelText('回复字数上限')).toBeTruthy();
+    await fireEvent.input(page.getByLabelText('回复字数上限'), {target: {value: '80'}});
+    await fireEvent.click(page.getByRole('button', {name: '保存艾玛 AI 设置'}));
+    await flushAsync();
+    expect(mocks.invoke.mock.calls.some((call: unknown[]) => call[0] === 'companion_save')).toBe(true);
+    const payload = mocks.invoke.mock.calls.find((call: unknown[]) => call[0] === 'companion_save')![1].settings;
+    expect(payload.reply_max_chars).toBe(80);
+    expect(payload).not.toHaveProperty('bank_id');
+    expect(payload.observation_enabled).toBe(false);
+  });
+});

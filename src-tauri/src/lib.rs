@@ -30,6 +30,7 @@ pub mod modules;
 mod app_state;
 mod commands;
 mod lib_helpers;
+mod package_check;
 
 pub(crate) use app_state::get_state_unlock_notify;
 pub(crate) use lib_helpers::*;
@@ -105,6 +106,16 @@ use tauri_plugin_autostart::ManagerExt;
 /// 应用入口点
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    let context = tauri::generate_context!();
+    // Explicit packaging check exits before any window, settings or service is started.
+    if let Some(report_path) = std::env::args_os()
+        .skip_while(|arg| arg != "--verify-package")
+        .nth(1)
+    {
+        let result = package_check::verify(&context, std::path::Path::new(&report_path));
+        std::process::exit(if result.is_ok() { 0 } else { 1 });
+    }
+
     // 创建共享的 archive store（在 Builder 之前，因为 protocol handler 和 AppState 都需要引用它）
     let shared_archive_store = Arc::new(Mutex::new(modules::mod_archive::ModArchiveStore::new()));
     let protocol_store = shared_archive_store.clone();
@@ -462,7 +473,11 @@ pub fn run() {
                 pending_open_mod_archives: Mutex::new(Vec::new()),
                 archive_store: shared_archive_store,
                 dsh: Mutex::new(Default::default()),
+                telegram: Mutex::new(Default::default()),
             });
+
+            let companion_dir = app.path().app_config_dir()?.join("companion");
+            app.manage(modules::companion::Companion::new(companion_dir).unwrap_or_else(modules::companion::Companion::unavailable));
 
             // ========== 监听设置变更以实时刷新托盘菜单 ==========
             {
@@ -519,6 +534,8 @@ pub fn run() {
 
                 builder.build(app)?;
             }
+
+            modules::companion::start(app.handle().clone());
 
             // 在后台线程初始化环境信息（地理位置和天气）
             let app_handle_env = app.handle().clone();
@@ -686,14 +703,34 @@ pub fn run() {
             // 登录检测
             start_login_detection,
             // DSH 集成
+            companion_get,
+            companion_set_input_collapsed,
+            companion_save,
+            companion_send,
+            companion_stop,
+            companion_history,
+            companion_forget,
+            companion_observe,
+            companion_test,
+            companion_playback_finished,
+            companion_blur,
+            companion_export,
+            companion_voice_samples,
+            companion_voice_sample_audio,
+            companion_voice_create,
+            companion_speech_preview,
             dsh_get_status,
             dsh_start,
             dsh_stop,
             dsh_toggle_panel,
             dsh_open_browser,
             dsh_get_assets,
+            // Telegram 远程通道
+            telegram_get_status,
+            telegram_start,
+            telegram_stop,
         ])
-        .run(tauri::generate_context!())
+        .run(context)
         .expect("error while running tauri application");
 }
 

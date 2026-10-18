@@ -54,6 +54,10 @@ traybuddy.exe --dsh-browser   :: 在浏览器打开
 1. **启动**：以 `CREATE_NO_WINDOW` 隐藏终端运行 `cmd /C dsh web --port 3080`
    （依次尝试 PATH 中的 `dsh`、`%APPDATA%\npm\dsh.cmd`、`node …\@deepseek-ai\dsh\lib\bin.js`）。
 2. **就绪检测**：轮询 `GET http://127.0.0.1:3080/`，200 即就绪（首次启动约 15~25 秒）。
+   该健康检查的 reqwest 客户端显式 `.no_proxy()`（禁用系统代理）：本机回环必须直连。
+   否则当系统开启代理（如 Clash Verge）时，Windows `ProxyOverride` 里的 `127.*` 不会被
+   reqwest 识别为 IP 绕过规则，探测会误走代理，导致“浏览器正常但桌宠误判 DSH 未启动 /
+   重复启动报进程冲突”。
 3. **交互面板**：Tauri `WebviewWindow` 加载 `http://127.0.0.1:3080/`（DSH 官方 Web UI 本体，功能 100% 一致）。
 4. **任务完成检测**：连接 WebSocket `ws://127.0.0.1:3080/api/events.host`，
    解析 `host/session-status`（running 标志）与 `host/agent-error` 帧：
