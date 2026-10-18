@@ -11,6 +11,7 @@
 - [桌宠通用功能与 Mod 文档](README-TRAYBUDDY.md)：保留原项目完整说明、素材署名与多语言教程。
 - [艾玛 AI 使用与数据说明](README-EMA-AI.md)：接口配置、专用记忆与恢复。
 - [实施与验证记录](docs/ema-ai-implementation-2026-10-15.md)。
+- [定时观察未响应的定位与修复](docs/observation-hang-fix-2026-10-18.md)。
 - [最初的实验功能计划](docs/ema-ai-experiments-plan-2026-10-15.md)。
 - [更新日志](CHANGELOG.md)。
 
@@ -192,6 +193,7 @@ Windows 脚本为 lib 测试程序补齐 Common Controls v6 manifest，处理原
 ## 验证状态与限制
 
 - 2026-10-18，用户反馈当前版本实测正常。
+- 后续定时观察修复：解决共享设置锁与同步界面查询之间的死锁，15 项后端测试通过，并验证旧锁作用域在同一回归下失败、新作用域通过。参见[定位记录](docs/observation-hang-fix-2026-10-18.md)。
 - 最近输入框迭代：前端 11 项、Rust 后端 11 项测试通过；生产页面和发布程序构建通过；内置页面及压缩包校验通过。
 - 之前完成 68 项前端与相关模块回归，以及隔离临时 bank 的真实中文 Hindsight 写入/召回测试。
 - 全量 Svelte 类型检查仍有原有 MMD、3D 和历史测试诊断。最近记录为 535 条、9 个文件；companion 文件没有相应诊断。相关测试通过不等于全仓库类型检查通过。

@@ -39,6 +39,8 @@ Ema AI 的配置和记录位于 Tauri 应用配置目录中的 `companion` 子�
 
 新 AI 数据损坏时会停用 AI 并保留原文件，原桌宠继续启动。恢复对应备份后重启；不要删除身份文件来尝试“自动修复”已有记忆。
 
+新增 `companion/diagnostics.log` 用于排查观察或回复未响应，记录固定流程阶段、结果与耗时，不记录截图、窗口标题、对话内容、密钥或 bank 身份。日志达到 256 KiB 后轮换为 `diagnostics.previous.log`。定时观察的跨线程死锁修复见 [定位记录](docs/observation-hang-fix-2026-10-18.md)。
+
 ## 能力与边界
 
 人格以开朗、体贴、怕寂寞和害怕被讨厌为主，允许完整剧情但区分路线。初始提示词位于 `src-tauri/src/modules/companion/persona.txt`。
