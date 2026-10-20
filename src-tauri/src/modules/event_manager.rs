@@ -99,11 +99,6 @@ pub mod events {
     /// AI 工具信息窗口消息事件（后端推送截图识别结果到信息窗口）
     pub const AI_TOOL_INFO_MESSAGE: &str = "ai-tool-info-message";
 
-    /// DSH 集成：状态变化事件（payload 为 DshStatus）
-    pub const DSH_STATUS: &str = "dsh-status";
-
-    /// DSH 集成：通知事件（payload 为 {"kind": "ready"|"completed"|"failed"|"down"}）
-    pub const DSH_NOTIFY: &str = "dsh-notify";
 }
 
 // ========================================================================= //

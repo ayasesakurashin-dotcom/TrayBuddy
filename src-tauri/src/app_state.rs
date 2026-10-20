@@ -124,11 +124,6 @@ pub struct AppState {
     /// Mod 包内存存储：管理从 .tbuddy 加载到内存中的 archive 实例
     pub archive_store: Arc<Mutex<ModArchiveStore>>,
 
-    /// DeepSeek Harness 集成管理器：DSH 进程生命周期、状态监控与任务完成检测
-    pub dsh: Mutex<crate::modules::dsh::DshManager>,
-
-    /// Telegram 远程通道管理器：远程 channel 进程生命周期
-    pub telegram: Mutex<crate::modules::telegram::TelegramManager>,
 }
 
 impl AppState {

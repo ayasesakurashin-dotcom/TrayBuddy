@@ -127,10 +127,9 @@ pub fn run() {
             tauri_plugin_autostart::MacosLauncher::LaunchAgent,
             Some(vec!["--minimized"]),
         ))
-        // 单实例：二次启动（例如双击 .tbuddy/.sbuddy、--dsh-start 等）转发参数给现有实例
+        // 单实例：二次启动（例如双击 .tbuddy/.sbuddy）转发参数给现有实例
         .plugin(tauri_plugin_single_instance::init(|app, argv, _cwd| {
             handle_open_mod_archives_from_args(app, &argv);
-            modules::dsh::handle_dsh_cli_args(app, &argv);
         }))
         // ========== 自定义协议：tbuddy-asset:// ========== 
         // 用于从内存中的 .tbuddy archive 流式返回资源文件
@@ -472,8 +471,6 @@ pub fn run() {
                 global_mouse_enabled: Arc::new(std::sync::atomic::AtomicBool::new(initial_global_mouse)),
                 pending_open_mod_archives: Mutex::new(Vec::new()),
                 archive_store: shared_archive_store,
-                dsh: Mutex::new(Default::default()),
-                telegram: Mutex::new(Default::default()),
             });
 
             let companion_dir = app.path().app_config_dir()?.join("companion");
@@ -548,8 +545,6 @@ pub fn run() {
             // 冷启动：如果是通过双击 .tbuddy/.sbuddy 启动，自动拉起 Mods 并导入
             let cli_args: Vec<String> = std::env::args().skip(1).collect();
             handle_open_mod_archives_from_args(app.handle(), &cli_args);
-            // 冷启动：处理 --dsh-start / --dsh-stop / --dsh-panel 等 CLI 参数
-            modules::dsh::handle_dsh_cli_args(app.handle(), &cli_args);
 
             Ok(())
         })
@@ -702,7 +697,7 @@ pub fn run() {
             reset_animation_window_position,
             // 登录检测
             start_login_detection,
-            // DSH 集成
+            // 艾玛独立 AI
             companion_get,
             companion_set_input_collapsed,
             companion_save,
@@ -719,16 +714,6 @@ pub fn run() {
             companion_voice_sample_audio,
             companion_voice_create,
             companion_speech_preview,
-            dsh_get_status,
-            dsh_start,
-            dsh_stop,
-            dsh_toggle_panel,
-            dsh_open_browser,
-            dsh_get_assets,
-            // Telegram 远程通道
-            telegram_get_status,
-            telegram_start,
-            telegram_stop,
         ])
         .run(context)
         .expect("error while running tauri application");

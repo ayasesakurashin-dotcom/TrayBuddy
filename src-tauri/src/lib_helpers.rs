@@ -1477,78 +1477,6 @@ pub(crate) fn inner_build_tray_menu(app: &tauri::AppHandle) -> tauri::Result<Men
       None::<&str>,
     )?;
 
-    // ========== DeepSeek Harness (DSH) 联动菜单 ==========
-    // 读取 DSH 状态以决定菜单项可用性
-    let dsh_state = {
-        let mgr = app_state.dsh.lock().unwrap();
-        mgr.status().state
-    };
-    let dsh_running = dsh_state == crate::modules::dsh::DshState::Running;
-    let dsh_active = dsh_state == crate::modules::dsh::DshState::Running
-        || dsh_state == crate::modules::dsh::DshState::Starting;
-    let dsh_start_i = MenuItem::with_id(
-        app,
-        "dsh_start",
-        get_i18n_text(app, "menu.dshStart"),
-        !dsh_active,
-        None::<&str>,
-    )?;
-    let dsh_stop_i = MenuItem::with_id(
-        app,
-        "dsh_stop",
-        get_i18n_text(app, "menu.dshStop"),
-        dsh_active,
-        None::<&str>,
-    )?;
-    let dsh_panel_i = MenuItem::with_id(
-        app,
-        "dsh_panel",
-        get_i18n_text(app, "menu.dshPanel"),
-        dsh_running,
-        None::<&str>,
-    )?;
-    let dsh_browser_i = MenuItem::with_id(
-        app,
-        "dsh_browser",
-        get_i18n_text(app, "menu.dshBrowser"),
-        dsh_running,
-        None::<&str>,
-    )?;
-    let dsh_submenu = tauri::menu::Submenu::with_items(
-        app,
-        get_i18n_text(app, "menu.dsh"),
-        true,
-        &[&dsh_start_i, &dsh_stop_i, &dsh_panel_i, &dsh_browser_i],
-    )?;
-
-    // ========== Telegram 远程通道菜单 ==========
-    let tg_state = {
-        let mgr = app_state.telegram.lock().unwrap();
-        mgr.status().state
-    };
-    let tg_active = tg_state == crate::modules::telegram::TelegramState::Running
-        || tg_state == crate::modules::telegram::TelegramState::Starting;
-    let tg_start_i = MenuItem::with_id(
-        app,
-        "telegram_start",
-        "启动远程通道",
-        !tg_active,
-        None::<&str>,
-    )?;
-    let tg_stop_i = MenuItem::with_id(
-        app,
-        "telegram_stop",
-        "停止远程通道",
-        tg_active,
-        None::<&str>,
-    )?;
-    let tg_submenu = tauri::menu::Submenu::with_items(
-        app,
-        "远程通道",
-        true,
-        &[&tg_start_i, &tg_stop_i],
-    )?;
-
     let mod_i = MenuItem::with_id(
       app,
       "mod",
@@ -1631,8 +1559,6 @@ pub(crate) fn inner_build_tray_menu(app: &tauri::AppHandle) -> tauri::Result<Men
             &reminder_i,
 
             &companion_submenu,
-            &dsh_submenu,
-            &tg_submenu,
             &sep2,
             &streamer_mode_i,
             &show_widget_i,
@@ -1652,25 +1578,6 @@ pub(crate) fn handle_menu_event(app: &tauri::AppHandle, id: &str) {
     match id {
         "companion_input" | "companion_speech" | "companion_observation" | "companion_once" | "companion_stop" => {
             crate::modules::companion::menu_event(app, id);
-        }
-        // ========== DeepSeek Harness 联动 ==========
-        "dsh_start" => {
-            let _ = crate::modules::dsh::start_dsh(app.clone());
-        }
-        "dsh_stop" => {
-            let _ = crate::modules::dsh::stop_dsh(app.clone());
-        }
-        "dsh_panel" => {
-            let _ = crate::modules::dsh::toggle_dsh_panel(app);
-        }
-        "dsh_browser" => {
-            let _ = crate::modules::dsh::open_dsh_in_browser(app);
-        }
-        "telegram_start" => {
-            let _ = crate::modules::telegram::start_telegram(app.clone());
-        }
-        "telegram_stop" => {
-            let _ = crate::modules::telegram::stop_telegram(app.clone());
         }
         "open_mod_tool_dir" | "open_other_tool_dir" => {
             let subdir = if id == "open_mod_tool_dir" {

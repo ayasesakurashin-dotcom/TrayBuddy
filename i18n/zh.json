@@ -847,19 +847,7 @@
     "streamerMode": "主播模式",
     "showCharacter": "显示桌面挂件",
 
-    "quit": "退出",
-    "dsh": "DeepSeek Harness",
-    "dshStart": "启动 DSH",
-    "dshStop": "停止 DSH",
-    "dshPanel": "打开交互面板",
-    "dshBrowser": "在浏览器中打开"
-  },
-  "dsh": {
-    "bubbleReady": "DeepSeek Harness 已就绪~",
-    "bubbleCompleted": "任务完成啦~",
-    "bubbleFailed": "呜…任务出错了 (._.)",
-    "bubbleDown": "DeepSeek Harness 已停止",
-    "bubbleStartFailed": "DSH 启动失败，请检查是否已安装"
+    "quit": "退出"
   },
   "about": {
     "title": "关于本程序",

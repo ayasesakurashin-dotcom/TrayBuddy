@@ -36,7 +36,7 @@ text_list/data
 sbuddy-crypto/
 sbuddy-crypto.exe
 mod-tool/sbuddy-crypto.exe
-# DSH build artifacts
+# Local build artifacts
 /release
 /tauri-build*.log
 

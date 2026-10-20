@@ -1,4 +1,4 @@
-//! Independent companion AI; never uses DSH, MCP, or another installed agent.
+//! Independent companion AI; calls configured services directly, without other agents.
 mod access;
 mod capabilities;
 mod diagnostics;

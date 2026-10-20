@@ -34,13 +34,21 @@ describe('companion presentation', () => {
     expect(audio.playUrl).not.toHaveBeenCalled();
     expect(controls.isActive()).toBe(false); controls.destroy();
   });
-  it('yields to DSH and ignores the stopped audio completion callback', async () => {
+  it.each([
+    ['companion-stop', null],
+    ['settings-change', {no_audio_mode: true}],
+    ['settings-change', {silence_mode: true}],
+    ['settings-change', {show_character: false}],
+  ])('cancels playback on %s %j and ignores late callbacks and audio', async (name, payload) => {
     const {audio, show, controls, finish} = await create();
     await dispatch('companion-reply', {id: 'one', request: 1, text: '我在这里。'});
     await dispatch('companion-audio', {id: 'one', request: 1, data: 'audio'});
     expect(audio.playUrl).toHaveBeenCalledOnce();
-    await dispatch('dsh-notify', {kind: 'completed'});
+    await dispatch(name, payload);
+    expect(audio.stop).toHaveBeenCalledTimes(2);
     const calls = show.mock.calls.length; finish();
+    await dispatch('companion-audio', {id: 'one', request: 1, data: 'late'});
+    expect(audio.playUrl).toHaveBeenCalledOnce();
     expect(show.mock.calls.length).toBe(calls); expect(controls.isActive()).toBe(false); controls.destroy();
   });
   it('renders generated link labels as plain text', async () => {

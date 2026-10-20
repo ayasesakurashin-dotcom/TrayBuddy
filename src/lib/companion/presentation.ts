@@ -46,8 +46,6 @@ export async function attachCompanion(options: {
     });
   }).then(track);
   await listen('companion-stop', stop).then(track);
-  // Yield to DSH's existing system-level notification, without touching DSH itself.
-  await listen('dsh-notify', stop).then(track);
   await listen<{no_audio_mode?: boolean; silence_mode?: boolean; show_character?: boolean}>('settings-change', event => {
     if (event.payload.no_audio_mode || event.payload.silence_mode || event.payload.show_character === false) stop();
   }).then(track);

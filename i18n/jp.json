@@ -849,19 +849,7 @@
     "streamerMode": "配信者モード",
     "showCharacter": "キャラクターを表示",
 
-    "quit": "終了",
-    "dsh": "DeepSeek Harness",
-    "dshStart": "DSH を起動",
-    "dshStop": "DSH を停止",
-    "dshPanel": "チャットパネルを開く",
-    "dshBrowser": "ブラウザで開く"
-  },
-  "dsh": {
-    "bubbleReady": "DeepSeek Harness の準備ができました~",
-    "bubbleCompleted": "タスク完了です~",
-    "bubbleFailed": "うぅ…タスクが失敗しました (._.)",
-    "bubbleDown": "DeepSeek Harness を停止しました",
-    "bubbleStartFailed": "DSH の起動に失敗しました。インストールを確認してください"
+    "quit": "終了"
   },
   "about": {
     "title": "このアプリについて",

@@ -195,7 +195,6 @@ export function createWindowCore(options: {
   let unlistenDragMouseState: (() => void) | null = null;
   let unlistenAiToolActivated: (() => void) | null = null;
   let unlistenAiToolData: (() => void) | null = null;
-  let unlistenDshNotify: (() => void) | null = null;
   let unsubLang: (() => void) | null = null;
 
 
@@ -1233,45 +1232,6 @@ export function createWindowCore(options: {
         emitPlaybackStatus();
       });
 
-      // ========== DeepSeek Harness 联动通知 ==========
-      // 后端监控 DSH 的 Agent 运行状态，通过 dsh-notify 推送
-      // ready / completed / failed / down 四类通知：
-      // - completed：任务完成 → 弹出气泡（提示音由后端系统级播放，见 modules/dsh.rs）
-      // - 其余：仅气泡提示
-      unlistenDshNotify = await listen<{ kind?: string }>(
-        "dsh-notify",
-        async (event) => {
-          const kind = event?.payload?.kind ?? "";
-          const bm = refs.getBubbleManager();
-
-          let text: string | null = null;
-          switch (kind) {
-            case "ready":
-              text = i18nT("dsh.bubbleReady");
-              break;
-            case "completed":
-              text = i18nT("dsh.bubbleCompleted");
-              break;
-            case "failed":
-              text = i18nT("dsh.bubbleFailed");
-              break;
-            case "down":
-              text = i18nT("dsh.bubbleDown");
-              break;
-            default:
-              break;
-          }
-
-          if (text && bm) {
-            try {
-              bm.show({ text, duration: 4200 });
-            } catch (err) {
-              console.warn("[DSH] failed to show bubble:", err);
-            }
-          }
-        },
-      );
-
       // 监听 AI 工具激活事件：焦点窗口匹配到 ai_tools 配置时弹气泡
       unlistenAiToolActivated = await listen<{ window_name: string; model?: string }>(
         "ai-tool-activated",
@@ -1455,7 +1415,6 @@ export function createWindowCore(options: {
     unlistenDragMouseState?.();
     unlistenAiToolActivated?.();
     unlistenAiToolData?.();
-    unlistenDshNotify?.();
     unsubLang?.();
 
     destroyI18n();

@@ -1,6 +1,6 @@
 [package]
 name = "traybuddy"
-version = "0.2.0"
+version = "0.3.0"
 description = ""
 authors = ["cafel"]
 edition = "2021"
@@ -44,9 +44,6 @@ base64 = "0.22"
 image = { version = "0.25", default-features = false, features = ["png", "bmp"] }
 regex = "1"
 raw-window-handle = "0.6"
-# DSH 集成：WebSocket 事件流（任务完成检测）
-tokio-tungstenite = "0.24"
-futures-util = "0.3"
 
 # Windows 媒体监听和鼠标位置
 [target.'cfg(windows)'.dependencies]

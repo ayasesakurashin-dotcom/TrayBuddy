@@ -849,19 +849,7 @@
     "streamerMode": "Streamer Mode",
     "showCharacter": "Show Character",
 
-    "quit": "Quit",
-    "dsh": "DeepSeek Harness",
-    "dshStart": "Start DSH",
-    "dshStop": "Stop DSH",
-    "dshPanel": "Open Chat Panel",
-    "dshBrowser": "Open in Browser"
-  },
-  "dsh": {
-    "bubbleReady": "DeepSeek Harness is ready~",
-    "bubbleCompleted": "Task completed~",
-    "bubbleFailed": "Ugh... the task failed (._.)",
-    "bubbleDown": "DeepSeek Harness stopped",
-    "bubbleStartFailed": "DSH failed to start, is it installed?"
+    "quit": "Quit"
   },
   "about": {
     "title": "About",
