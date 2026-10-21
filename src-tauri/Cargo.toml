@@ -1,6 +1,6 @@
 [package]
 name = "traybuddy"
-version = "0.3.0"
+version = "0.3.1"
 description = ""
 authors = ["cafel"]
 edition = "2021"

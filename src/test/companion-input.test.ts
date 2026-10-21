@@ -65,9 +65,11 @@ describe('manual companion input collapse', () => {
   });
 
   it('keeps a manual choice when an older settings request finishes late', async () => {
+    const page = render(CompanionInput);
+    await flushAsync();
     let finishLoad!: (value: CompanionView) => void;
     mocks.invoke.mockImplementationOnce(() => new Promise<CompanionView>(resolve => finishLoad = resolve));
-    const page = render(CompanionInput);
+    mocks.handlers.get('companion-settings-changed')?.({ payload: {} });
     const oldView = structuredClone(view);
     await fireEvent.click(page.getByRole('button', { name: '收起聊天输入框' }));
     await flushAsync();
@@ -100,5 +102,62 @@ describe('manual companion input collapse', () => {
     expect((page.getByLabelText('给艾玛的消息') as HTMLTextAreaElement).value).toBe('保留草稿');
     expect(page.getByRole('status').textContent).toBe('保存失败');
     expect(page.queryByRole('button', { name: '展开聊天输入框' })).toBeNull();
+  });
+
+  it('waits for the saved layout before rendering into a possibly collapsed native window', async () => {
+    let finishLoad!: (value: CompanionView) => void;
+    mocks.invoke.mockImplementationOnce(() => new Promise<CompanionView>(resolve => finishLoad = resolve));
+    const page = render(CompanionInput);
+    expect(page.queryByLabelText('给艾玛的消息')).toBeNull();
+    view.settings.input_collapsed = true;
+    finishLoad(structuredClone(view));
+    await flushAsync();
+    expect(page.getByRole('button', { name: '展开聊天输入框' })).toBeTruthy();
+    expect(page.queryByLabelText('给艾玛的消息')).toBeNull();
+  });
+
+  it('removes all input content when disabled and restores its draft when enabled', async () => {
+    const page = render(CompanionInput);
+    await flushAsync();
+    await fireEvent.input(page.getByLabelText('给艾玛的消息'), { target: { value: '隐藏时保留草稿' } });
+    view.settings.input_enabled = false;
+    mocks.handlers.get('companion-settings-changed')?.({ payload: {} });
+    await flushAsync();
+    expect(page.queryByLabelText('给艾玛的消息')).toBeNull();
+    expect(page.queryByRole('button')).toBeNull();
+    view.settings.input_enabled = true;
+    mocks.handlers.get('companion-settings-changed')?.({ payload: {} });
+    await flushAsync();
+    expect((page.getByLabelText('给艾玛的消息') as HTMLTextAreaElement).value).toBe('隐藏时保留草稿');
+  });
+
+  it('does not let an older refresh restore content after disabling the input', async () => {
+    const page = render(CompanionInput);
+    await flushAsync();
+    const oldView = structuredClone(view);
+    let finishLoad!: (value: CompanionView) => void;
+    mocks.invoke.mockImplementationOnce(() => new Promise<CompanionView>(resolve => finishLoad = resolve));
+    mocks.handlers.get('companion-settings-changed')?.({ payload: {} });
+    view.settings.input_enabled = false;
+    mocks.handlers.get('companion-settings-changed')?.({ payload: {} });
+    await flushAsync();
+    finishLoad(oldView);
+    await flushAsync();
+    expect(page.queryByLabelText('给艾玛的消息')).toBeNull();
+    expect(page.queryByRole('button')).toBeNull();
+  });
+
+  it('renders the compact control before the collapse command finishes resizing the native window', async () => {
+    const page = render(CompanionInput);
+    await flushAsync();
+    let finishToggle!: (value: boolean) => void;
+    mocks.invoke.mockImplementationOnce(() => new Promise<boolean>(resolve => finishToggle = resolve));
+    await fireEvent.click(page.getByRole('button', { name: '收起聊天输入框' }));
+    await flushAsync();
+    expect(page.queryByLabelText('给艾玛的消息')).toBeNull();
+    expect((page.getByRole('button', { name: '展开聊天输入框' }) as HTMLButtonElement).disabled).toBe(true);
+    finishToggle(true);
+    await flushAsync();
+    expect((page.getByRole('button', { name: '展开聊天输入框' }) as HTMLButtonElement).disabled).toBe(false);
   });
 });

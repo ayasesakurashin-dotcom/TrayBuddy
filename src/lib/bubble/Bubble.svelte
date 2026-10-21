@@ -55,6 +55,7 @@
 
   /** 打字速度（毫秒/字符） */
   export let typeSpeed: number = 50;
+  export let plainText: boolean = false;
 
   // ======================================================================= //
   // 状态
@@ -77,6 +78,7 @@
 
   /** 自动关闭定时器 */
   let autoCloseTimer: ReturnType<typeof setTimeout> | null = null;
+  let closeTimer: ReturnType<typeof setTimeout> | null = null;
 
   /** 是否正在关闭 */
   let isClosing = false;
@@ -122,6 +124,7 @@
 
   onDestroy(() => {
     clearAutoCloseTimer();
+    if (closeTimer) clearTimeout(closeTimer);
   });
 
   // ======================================================================= //
@@ -185,7 +188,7 @@
     opacity.set(0);
 
     // 动画完成后触发关闭事件
-    setTimeout(() => {
+    closeTimer = setTimeout(() => {
       dispatch("close");
     }, BUBBLE_CLOSE_ANIMATION_MS);
   }
@@ -194,7 +197,7 @@
    * 点击气泡外部关闭（仅当没有分支选项时）
    */
   function handleBackdropClick() {
-    if (branches.length === 0 && showBranches) {
+    if (!plainText && branches.length === 0 && showBranches) {
       close();
     }
   }
@@ -222,7 +225,7 @@
   class="bubble-wrapper position-{position}"
   style="transform: scale({$scale}); opacity: {$opacity}; {tailVars}"
 >
-  <div class="bubble" style={bubbleMainStyle} on:click={handleBackdropClick}>
+  <div class="bubble" class:companion={plainText} style={bubbleMainStyle} on:click={handleBackdropClick}>
     <!-- 气泡装饰 - 顶部 -->
     {#if style?.bubble.decoration_top}
       <span class="bubble-decor-top" style={decorTopStyle}
@@ -246,6 +249,7 @@
         <TypewriterText
           {text}
           speed={typeSpeed}
+          {plainText}
           on:complete={handleTextComplete}
         />
       {:else}
@@ -287,6 +291,23 @@
 
   .bubble {
     position: relative;
+  }
+
+  .bubble.companion {
+    box-sizing: border-box;
+    width: max-content !important;
+    height: auto !important;
+    min-width: 0 !important;
+    max-width: min(280px, calc(100vw - 24px)) !important;
+    max-height: none !important;
+    font-size: 14px !important;
+    line-height: 1.6 !important;
+    padding: 12px 16px !important;
+  }
+
+  .companion .bubble-content {
+    overflow-wrap: anywhere;
+    white-space: pre-wrap;
   }
 
   .bubble-decor-top,

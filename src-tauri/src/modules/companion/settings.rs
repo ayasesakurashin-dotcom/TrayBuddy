@@ -68,7 +68,8 @@ impl Default for Settings {
             capture_scope: "foreground".into(),
             capture_region: [0, 0, 800, 600],
             excluded_windows: vec![],
-            reply_max_chars: 120,
+            // Zero leaves reply length to the user and the selected model.
+            reply_max_chars: 0,
             nickname: String::new(),
         }
     }
@@ -109,9 +110,6 @@ impl Settings {
         validate_url(&self.memory.base_url, true)?;
         if !(30..=86400).contains(&self.observation_interval_secs) {
             return Err("观察周期须在 30 秒至 24 小时之间".into());
-        }
-        if !(40..=180).contains(&self.reply_max_chars) {
-            return Err("回复上限须在 40—180 字之间".into());
         }
         if !matches!(
             self.capture_scope.as_str(),
@@ -314,6 +312,17 @@ fn protect(_: &[u8], _: bool) -> Result<Vec<u8>, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn reply_length_is_unlimited_by_default_and_accepts_user_limits() {
+        let mut value = Settings::default();
+        assert_eq!(value.reply_max_chars, 0);
+        for limit in [0, 1, 39, 181, 10000, usize::MAX] {
+            value.reply_max_chars = limit;
+            assert!(value.validate().is_ok());
+        }
+        let legacy: Settings = serde_json::from_str(r#"{"reply_max_chars":120}"#).unwrap();
+        assert_eq!(legacy.reply_max_chars, 120);
+    }
     #[test]
     fn identity_survives_restart_and_rejects_missing_owner_file() {
         let dir = tempfile::tempdir().unwrap();

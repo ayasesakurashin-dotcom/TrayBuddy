@@ -30,6 +30,9 @@
   }
   async function persist() {
     if (!config) return;
+    const replyLimit = Number(config.reply_max_chars ?? 0);
+    if (!Number.isSafeInteger(replyLimit) || replyLimit < 0) throw new Error('回复字数上限须为非负整数，0 表示不限制');
+    config.reply_max_chars = replyLimit;
     config.excluded_windows = excluded.split('\n').map(value => value.trim()).filter(Boolean);
     view = await invoke<CompanionView>('companion_save', { settings: $state.snapshot(config) });
     config = view.settings;
@@ -63,7 +66,7 @@
 </script>
 
 <section class="companion-settings" aria-label="艾玛 AI 设置">
-  <header><span class="eyebrow">EMA COMPANION</span><h2>和艾玛一起，让日常多一点回应</h2><p>短句聊天、持续记忆，以及熟悉的日语声音。</p></header>
+  <header><span class="eyebrow">EMA COMPANION</span><h2>和艾玛一起，让日常多一点回应</h2><p>自然聊天、持续记忆，以及熟悉的日语声音。</p></header>
   {#if config && view}
     <div class="toggles">
       <label><input type="checkbox" bind:checked={config.input_enabled} />显示对话输入框</label>
@@ -72,9 +75,9 @@
     </div>
     <div class="fields two">
       <label>希望艾玛怎么称呼你<input bind:value={config.nickname} maxlength="40" placeholder="留空则自然称呼" /></label>
-      <label>回复字数上限<input type="number" bind:value={config.reply_max_chars} min="40" max="180" /></label>
+      <label>回复字数上限<input type="number" bind:value={config.reply_max_chars} min="0" step="1" placeholder="0 表示不限制" /></label>
     </div>
-    <p class="hint">日常以 1—3 个短句回应，默认最多 120 字。开关保存后生效，也可在右键菜单快速切换。</p>
+    <p class="hint">0 表示不限制总字数，也可填写任意正整数设置上限。回复按语意分片，每片最多 80 字，完整显示后停留 4 秒。模型服务自身的输出容量仍适用。开关保存后生效，也可在右键菜单快速切换。</p>
     {#each endpoints as endpoint}
       <details open={endpoint.id === 'chat'}>
         <summary>{endpoint.title}<span>{config[endpoint.id].has_key ? '密钥已配置' : '待配置'}</span></summary>

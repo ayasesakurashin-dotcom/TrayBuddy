@@ -5,6 +5,19 @@ import BubbleManager from "$lib/bubble/BubbleManager.svelte";
 import { BUBBLE_SWITCH_DELAY_MS } from "$lib/constants";
 
 describe("BubbleManager", () => {
+  it('cancels a pending switch when hidden and never restores stale text', async () => {
+    vi.useFakeTimers();
+    const { component } = render(BubbleManager);
+    component.show({ text: 'First' });
+    component.show({ text: 'Late' });
+    component.hide();
+    await vi.advanceTimersByTimeAsync(BUBBLE_SWITCH_DELAY_MS + 10);
+    expect(component.isShowing()).toBe(false);
+    component.show({ text: 'Current' });
+    await vi.advanceTimersByTimeAsync(BUBBLE_SWITCH_DELAY_MS + 10);
+    expect(component.isShowing()).toBe(true);
+    vi.useRealTimers();
+  });
   it("shows, hides, and switches bubbles", async () => {
     vi.useFakeTimers();
     const { component } = render(BubbleManager);

@@ -7,6 +7,8 @@
   let busy = $state(false);
   let status = $state('和艾玛聊聊');
   let configured = $state(false);
+  let layoutReady = $state(false);
+  let enabled = $state(true);
   let collapsed = $state(false);
   let toggling = $state(false);
   let toggleError = $state('');
@@ -14,25 +16,33 @@
   let input = $state<HTMLTextAreaElement>();
   let destroyed = false;
   let layoutRevision = 0;
+  let refreshRevision = 0;
   async function refresh() {
+    const request = ++refreshRevision;
     const revision = layoutRevision;
-    try { const view = await invoke<CompanionView>('companion_get'); if (destroyed) return;
+    try { const view = await invoke<CompanionView>('companion_get'); if (destroyed || request !== refreshRevision) return;
       configured = view.settings.chat.has_key; busy = view.busy;
+      enabled = view.settings.input_enabled;
       if (!toggling && revision === layoutRevision) collapsed = view.settings.input_collapsed;
       status = configured ? view.status : '请先在设置中配置对话 API';
-    } catch (error) { status = String(error); }
+    } catch (error) { if (!destroyed && request === refreshRevision) status = String(error); }
+    finally { if (!destroyed && request === refreshRevision) layoutReady = true; }
   }
   async function toggleInput() {
     if (toggling) return;
     toggling = true; toggleError = ''; layoutRevision++;
+    const previous = collapsed;
+    // Paint the compact control before the native window shrinks. Otherwise
+    // WebView can briefly leave a clipped textarea inside the collapsed bounds.
+    if (!previous) { collapsed = true; await tick(); }
     try {
-      const next = await invoke<boolean>('companion_set_input_collapsed', { collapsed: !collapsed });
+      const next = await invoke<boolean>('companion_set_input_collapsed', { collapsed: !previous });
       if (destroyed) return;
       collapsed = next; composing = false;
       await tick();
       if (collapsed) void invoke('companion_blur').catch(() => {});
       else input?.focus();
-    } catch (error) { toggleError = String(error); status = toggleError; }
+    } catch (error) { collapsed = previous; toggleError = String(error); status = toggleError; }
     finally { layoutRevision++; toggling = false; }
   }
   async function send() {
@@ -63,6 +73,8 @@
   });
 </script>
 
+{#if layoutReady && enabled}
+<div class="input-window">
 {#if collapsed}
   <button class="collapsed-entry" aria-label="展开聊天输入框" aria-expanded="false" aria-controls="companion-entry" title={toggleError || '展开聊天输入框'} disabled={toggling} onclick={toggleInput}>
     <span>{toggleError ? '重试展开' : '和艾玛聊聊'}</span><span aria-hidden="true">⌄</span>
@@ -85,12 +97,15 @@
   </div>
 </div>
 {/if}
+</div>
+{/if}
 
 <style>
-  :global(html), :global(body) { margin: 0; background: transparent !important; overflow: hidden; font-family: 'Segoe UI', 'Microsoft YaHei', sans-serif; }
-  .composer { box-sizing: border-box; padding: 7px 10px; border: 1px solid #d9c9c9; border-radius: 14px; background: #fff9f7; color: #57434a; height: 82px; }
+  :global(html), :global(body) { margin: 0; width: 100%; height: 100%; background: transparent !important; overflow: hidden; font-family: 'Segoe UI', 'Microsoft YaHei', sans-serif; }
+  .input-window { width: 100vw; height: 100vh; overflow: hidden; }
+  .composer { box-sizing: border-box; width: 100%; height: 100%; padding: 7px 10px; border: 1px solid #d9c9c9; border-radius: 14px; background: #fff9f7; color: #57434a; overflow: hidden; }
   .entry { display: flex; gap: 7px; align-items: center; }
-  textarea { flex: 1; min-width: 0; height: 34px; max-height: 34px; padding: 4px 0; border: 0; outline: 0; resize: none; font: inherit; font-size: 13px; background: transparent; color: inherit; }
+  textarea { flex: 1; min-width: 0; height: 34px; max-height: 34px; padding: 4px 0; border: 0; outline: 0; resize: none; overflow-x: hidden; overflow-y: auto; font: inherit; font-size: 13px; background: transparent; color: inherit; }
   textarea::placeholder { color: #927f85; }
   button { border: 0; border-radius: 8px; padding: 7px 10px; background: #8b4d62; color: white; cursor: pointer; font-size: 12px; }
   button:disabled { opacity: .4; cursor: default; }
@@ -99,7 +114,7 @@
   .status { flex: 1; min-width: 0; font-size: 10px; color: #8c747e; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .collapse { flex: none; background: transparent; color: inherit; padding: 2px 4px; font-size: 11px; }
   .collapse:hover { background: #eedfe3; }
-  .collapsed-entry { box-sizing: border-box; display: flex; align-items: center; justify-content: center; gap: 10px; width: 100%; height: 30px; border: 1px solid #d9c9c9; border-radius: 15px; padding: 0 10px; background: #fff9f7; color: #57434a; }
+  .collapsed-entry { box-sizing: border-box; display: flex; align-items: center; justify-content: center; gap: 10px; width: 100%; height: 100%; border: 1px solid #d9c9c9; border-radius: 15px; padding: 0 10px; background: #fff9f7; color: #57434a; white-space: nowrap; overflow: hidden; }
   button:focus-visible { outline: 2px solid #b97790; outline-offset: -2px; }
   @media (prefers-color-scheme: dark) { .composer, .collapsed-entry { background: #292328; color: #f1e5e8; border-color: #61505a; } .status { color: #bca5af; } .collapse:hover { background: #49353f; } }
 </style>

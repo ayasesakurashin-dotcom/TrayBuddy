@@ -34,7 +34,7 @@ describe('companion settings boundaries', () => {
     const observation = page.getByLabelText('定时屏幕观察') as HTMLInputElement;
     expect(observation.checked).toBe(false);
   });
-  it('saves short-reply settings without allowing a bank field to be submitted', async () => {
+  it('saves a user reply limit without allowing a bank field to be submitted', async () => {
     const page = render(CompanionSettings);
     await flushAsync();
     expect(page.getByLabelText('回复字数上限')).toBeTruthy();
@@ -46,5 +46,24 @@ describe('companion settings boundaries', () => {
     expect(payload.reply_max_chars).toBe(80);
     expect(payload).not.toHaveProperty('bank_id');
     expect(payload.observation_enabled).toBe(false);
+  });
+  it.each([0, 1500])('saves %i as the reply limit without the old 180-character ceiling', async limit => {
+    const page = render(CompanionSettings);
+    await flushAsync();
+    const input = page.getByLabelText('回复字数上限');
+    expect(input.getAttribute('max')).toBeNull();
+    await fireEvent.input(input, { target: { value: String(limit) } });
+    await fireEvent.click(page.getByRole('button', { name: '保存艾玛 AI 设置' }));
+    await flushAsync();
+    expect(mocks.invoke.mock.calls.find(call => call[0] === 'companion_save')![1].settings.reply_max_chars).toBe(limit);
+  });
+  it('rejects a negative reply limit before saving', async () => {
+    const page = render(CompanionSettings);
+    await flushAsync();
+    await fireEvent.input(page.getByLabelText('回复字数上限'), { target: { value: '-1' } });
+    await fireEvent.click(page.getByRole('button', { name: '保存艾玛 AI 设置' }));
+    await flushAsync();
+    expect(mocks.invoke.mock.calls.some(call => call[0] === 'companion_save')).toBe(false);
+    expect(page.getByRole('status').textContent).toContain('非负整数');
   });
 });

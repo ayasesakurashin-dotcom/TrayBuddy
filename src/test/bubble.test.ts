@@ -6,6 +6,23 @@ import { bubbleStyle, defaultStyle } from "$lib/bubble/bubbleStyle";
 import { resetBubbleStyle as resetStyle } from "./test-utils";
 
 describe("Bubble", () => {
+  it('keeps a companion page for the full reading time after click-to-finish', async () => {
+    vi.useFakeTimers();
+    resetStyle();
+    const close = vi.fn();
+    const { container } = render(Bubble, {
+      props: { text: '点击后完整显示的回复。', plainText: true, typeSpeed: 1000, duration: 4000 },
+      events: { close },
+    });
+    await tick();
+    await fireEvent.click(container.querySelector('.typewriter-text')!);
+    await fireEvent.click(container.querySelector('.bubble')!);
+    await vi.advanceTimersByTimeAsync(3999);
+    expect(close).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(201);
+    expect(close).toHaveBeenCalledOnce();
+    vi.useRealTimers();
+  });
   it("renders branches immediately without text", async () => {
     resetStyle();
     const branches = [

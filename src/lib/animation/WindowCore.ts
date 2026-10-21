@@ -848,6 +848,13 @@ export function createWindowCore(options: {
       if (playSessionToken !== token) return;
 
       const showBranchBubble = state.branch_show_bubble !== false;
+      // A preset started before the first AI packet can finish its async text
+      // lookup later. It must not replace a page that is still being read.
+      if (companion?.isActive()) {
+        bubbleComplete = true;
+        checkComplete();
+        return;
+      }
 
       if (!showBranchBubble && processedBranches.length > 0) {
         // 有分支但气泡被禁用：分支存入 pending，气泡不显示分支按钮，文本照常显示
@@ -1154,6 +1161,7 @@ export function createWindowCore(options: {
       companion = await attachCompanion({
         audio: audioManager,
         show: (config) => refs.getBubbleManager()?.show(config),
+        hide: () => refs.getBubbleManager()?.hide(),
         allowed: () => bindings.getShowCharacter() && !bindings.getSilenceMode(),
         releasePreset: () => { pendingBranchSelection = null; audioComplete = true; bubbleComplete = true; checkComplete(); },
       });
@@ -1236,6 +1244,7 @@ export function createWindowCore(options: {
       unlistenAiToolActivated = await listen<{ window_name: string; model?: string }>(
         "ai-tool-activated",
         (event) => {
+          if (companion?.isActive()) return;
           const bm = refs.getBubbleManager();
           if (bm && !bm.isShowing()) {
             const windowName = event.payload.window_name;

@@ -36,6 +36,7 @@
   
   /** 是否立即显示全部内容（跳过动画） */
   export let instant: boolean = false;
+  export let plainText: boolean = false;
 
   // ======================================================================= //
   // 常量（从后端加载，带默认值）
@@ -82,6 +83,7 @@
   // ======================================================================= //
 
   onMount(async () => {
+    if (plainText) return;
     // 从后端加载常量
     try {
       const consts = await invoke<Record<string, number>>('get_const_int');
@@ -133,8 +135,9 @@
   /** 处理后的文本（自动换行），constsVersion 用于在常量加载后触发重新计算 */
   $: processedText = (() => {
     void constsVersion;  // 依赖常量版本号
-    return autoWrapText(text);
+    return plainText ? text : autoWrapText(text);
   })();
+  $: characters = Array.from(processedText);
 
   /**
    * 开始打字效果
@@ -145,10 +148,10 @@
     isComplete = false;
 
     timerId = setInterval(() => {
-      if (currentIndex < processedText.length) {
-        displayedText = processedText.slice(0, currentIndex + 1);
+      if (currentIndex < characters.length) {
+        displayedText = characters.slice(0, currentIndex + 1).join('');
         currentIndex++;
-        dispatch('typing', { current: currentIndex, total: processedText.length });
+        dispatch('typing', { current: currentIndex, total: characters.length });
       } else {
         stopTyping();
         isComplete = true;
@@ -173,7 +176,7 @@
   function showAll() {
     stopTyping();
     displayedText = processedText;
-    currentIndex = processedText.length;
+    currentIndex = characters.length;
     isComplete = true;
     dispatch('complete');
   }
@@ -181,8 +184,9 @@
   /**
    * 点击跳过动画
    */
-  function handleClick() {
+  function handleClick(event: MouseEvent) {
     if (!isComplete) {
+      event.stopPropagation();
       showAll();
     }
   }
@@ -209,12 +213,7 @@
   class="typewriter-text"
   class:complete={isComplete}
   on:click={handleClick}
->
-  {@html parseMarkdown(displayedText)}
-  {#if !isComplete}
-    <span class="cursor">|</span>
-  {/if}
-</span>
+>{#if plainText}{displayedText}{:else}{@html parseMarkdown(displayedText)}{/if}{#if !isComplete}<span class="cursor">|</span>{/if}</span>
 
 <style>
   .typewriter-text {

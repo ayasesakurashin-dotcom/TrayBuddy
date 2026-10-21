@@ -6,6 +6,59 @@ import TypewriterText from "$lib/bubble/TypewriterText.svelte";
 
 
 describe("TypewriterText", () => {
+  it('completes a companion page only once without loading constants or restarting after mount', async () => {
+    vi.useFakeTimers();
+    const complete = vi.fn();
+    const invokeMock = vi.mocked(invoke);
+    const firstCall = invokeMock.mock.calls.length;
+    const { container, unmount } = render(TypewriterText, {
+      props: { text: '完整回复', plainText: true, speed: 10 },
+      events: { complete },
+    });
+    await tick();
+    await vi.advanceTimersByTimeAsync(100);
+    expect(complete).toHaveBeenCalledOnce();
+    expect(container.querySelector('.typewriter-text')?.textContent).toBe('完整回复');
+    await vi.advanceTimersByTimeAsync(10000);
+    await tick();
+    expect(complete).toHaveBeenCalledOnce();
+    expect(container.querySelector('.cursor')).toBeNull();
+    expect(invokeMock.mock.calls.slice(firstCall).some(call => call[0] === 'get_const_int')).toBe(false);
+    unmount();
+    vi.useRealTimers();
+  });
+  it('keeps a clicked-to-finish companion page complete through later mount microtasks', async () => {
+    vi.useFakeTimers();
+    const complete = vi.fn();
+    const {container, unmount} = render(TypewriterText, {
+      props: {text: '点击后不应从头播放', plainText: true, speed: 1000},
+      events: {complete},
+    });
+    await fireEvent.click(container.querySelector('.typewriter-text')!);
+    await vi.advanceTimersByTimeAsync(10000);
+    await tick();
+    expect(complete).toHaveBeenCalledOnce();
+    expect(container.querySelector('.typewriter-text')?.textContent).toBe('点击后不应从头播放');
+    expect(container.querySelector('.cursor')).toBeNull();
+    unmount();
+    vi.useRealTimers();
+  });
+  it('keeps companion text literal and wraps in CSS without adding line breaks', async () => {
+    const text = '[链接](https://example.com) **字面文字** ' + '中文'.repeat(30) + '👩‍💻';
+    const { container } = render(TypewriterText, { props: { text, instant: true, plainText: true } });
+    await tick();
+    expect(container.querySelector('.typewriter-text')?.textContent).toBe(text);
+    expect(container.querySelector('a, strong, br')).toBeNull();
+  });
+  it('types a Unicode code point without exposing a surrogate half', async () => {
+    vi.useFakeTimers();
+    const { container } = render(TypewriterText, { props: { text: '😀好', plainText: true, speed: 10 } });
+    await tick();
+    vi.advanceTimersByTime(10);
+    await tick();
+    expect(container.querySelector('.typewriter-text')?.textContent).toBe('😀|');
+    vi.useRealTimers();
+  });
   it("types text and completes", async () => {
     vi.useFakeTimers();
     const { container } = render(TypewriterText, {

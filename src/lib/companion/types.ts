@@ -4,6 +4,7 @@ export interface CompanionSettings {
   chat: Endpoint; vision: Endpoint; speech: Endpoint; memory: Endpoint;
   voice_id: string; speech_speed: number; observation_interval_secs: number;
   capture_scope: string; capture_region: [number, number, number, number]; excluded_windows: string[];
+  /** Total reply limit in Unicode characters; 0 leaves the model output uncapped by the app. */
   reply_max_chars: number; nickname: string;
 }
 export interface CompanionView { settings: CompanionSettings; bank_id: string; status: string; pending: number; busy: boolean; summary: string }

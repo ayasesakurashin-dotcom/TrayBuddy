@@ -40,6 +40,10 @@
     position?: 'top' | 'left' | 'right';
     /** 打字速度（毫秒/字符） */
     typeSpeed?: number;
+    /** Render generated companion replies without Markdown or fixed character line breaks. */
+    plainText?: boolean;
+    /** Called after the complete text has appeared, so readers receive a full dwell time. */
+    onTextComplete?: () => void;
   }
   
   // 重新导出 BranchInfo 保持向后兼容
@@ -47,7 +51,7 @@
 </script>
 
 <script lang="ts">
-  import { createEventDispatcher, onMount } from 'svelte';
+  import { createEventDispatcher, onMount, onDestroy } from 'svelte';
   import Bubble from './Bubble.svelte';
   import { loadBubbleStyle } from './bubbleStyle';
   import { loadAiTools } from '$lib/aiTools';
@@ -65,6 +69,8 @@
   
   /** 样式是否已加载 */
   let styleReady = false;
+  let switchTimer: ReturnType<typeof setTimeout> | null = null;
+  let revision = 0;
 
   // ======================================================================= //
   // 事件
@@ -90,6 +96,7 @@
     await loadAiTools();
     styleReady = true;
   });
+  onDestroy(hide);
 
   // ======================================================================= //
   // 公共 API
@@ -100,11 +107,17 @@
    * @param config 气泡配置
    */
   export function show(config: BubbleConfig): void {
+    const token = ++revision;
+    if (switchTimer) clearTimeout(switchTimer);
+    switchTimer = null;
     // 如果有正在显示的气泡，先关闭
     if (isVisible) {
-      hide();
+      isVisible = false;
+      currentConfig = null;
       // 短暂延迟后显示新气泡
-      setTimeout(() => {
+      switchTimer = setTimeout(() => {
+        if (token !== revision) return;
+        switchTimer = null;
         currentConfig = config;
         isVisible = true;
         dispatch('show', config);
@@ -120,6 +133,9 @@
    * 隐藏气泡
    */
   export function hide(): void {
+    revision++;
+    if (switchTimer) clearTimeout(switchTimer);
+    switchTimer = null;
     isVisible = false;
     currentConfig = null;
   }
@@ -153,13 +169,17 @@
 </script>
 
 {#if styleReady && isVisible && currentConfig}
+  {#key currentConfig}
   <Bubble
     text={currentConfig.text}
     branches={currentConfig.branches || []}
-    duration={currentConfig.duration || 0}
+    duration={currentConfig.duration ?? 0}
     position={currentConfig.position || 'top'}
-    typeSpeed={currentConfig.typeSpeed || 50}
+    typeSpeed={currentConfig.typeSpeed ?? 50}
+    plainText={currentConfig.plainText ?? false}
+    on:textComplete={() => currentConfig?.onTextComplete?.()}
     on:branchSelect={handleBranchSelect}
     on:close={handleClose}
   />
+  {/key}
 {/if}

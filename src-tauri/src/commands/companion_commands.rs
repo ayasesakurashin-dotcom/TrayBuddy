@@ -123,6 +123,19 @@ pub fn companion_playback_finished(
     Ok(())
 }
 #[tauri::command]
+pub fn companion_reading(
+    window: WebviewWindow,
+    state: State<'_, Companion>,
+    request: u64,
+    active: bool,
+) -> Result<(), String> {
+    if !["animation", "live2d", "pngremix", "threed"].contains(&window.label()) {
+        return Err("此窗口无权更新桌宠阅读状态".into());
+    }
+    state.set_reading(request, active);
+    Ok(())
+}
+#[tauri::command]
 pub fn companion_blur(window: WebviewWindow) -> Result<(), String> {
     if window.label() != "companion-input" {
         return Err("无效窗口".into());

@@ -570,6 +570,7 @@ pub fn run() {
                 }
                 tauri::WindowEvent::Moved(_) => {
                     if RENDER_WINDOW_LABELS.contains(&window.label()) {
+                        let _ = modules::companion::follow_input_window(window.app_handle());
                         // 发送窗口位置更新事件（发送动画区域顶部位置，与保存一致）
                         if let Ok(position) = window.outer_position() {
                             let scale_factor = window.scale_factor().unwrap_or(1.0);
@@ -581,6 +582,13 @@ pub fn run() {
                         }
                         // 实时保存窗口位置（防止异常退出丢失）
                         save_animation_window_position(window);
+                    }
+                }
+
+                tauri::WindowEvent::Resized(_)
+                | tauri::WindowEvent::ScaleFactorChanged { .. } => {
+                    if RENDER_WINDOW_LABELS.contains(&window.label()) {
+                        let _ = modules::companion::sync_input_window(window.app_handle());
                     }
                 }
 
@@ -708,6 +716,7 @@ pub fn run() {
             companion_observe,
             companion_test,
             companion_playback_finished,
+            companion_reading,
             companion_blur,
             companion_export,
             companion_voice_samples,
