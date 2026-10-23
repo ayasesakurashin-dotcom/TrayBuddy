@@ -60,7 +60,6 @@ run(sevenZip, ['a', '-tzip', '-mx=5', '-bso0', '-bsp0', path.join(release, `${po
 const resources = Object.fromEntries([...resourceDirs, 'icons', 'docs'].map(directory => [`../release/${portableName}/${directory}`, directory]));
 for (const file of ['使用说明.md', 'CHANGELOG.md', 'package-check.json']) resources[`../release/${portableName}/${file}`] = file;
 resources[`../release/${portableName}-installer-build-info.json`] = 'build-info.json';
-// First clear the original resource map, then apply the curated map with the CLI's ordered configs.
-fs.writeFileSync(path.join(release, 'tauri.clear-resources.json'), JSON.stringify({ bundle: { resources: null } }, null, 2) + '\n');
+// bundle-release.ps1 replaces the default map; CLI overlays would merge it.
 fs.writeFileSync(path.join(release, `tauri.${version}.current-user.json`), JSON.stringify({ bundle: { resources, windows: { nsis: { installMode: 'currentUser' } } } }, null, 2) + '\n');
 console.log(JSON.stringify({ version, sourceCommit, portable, production: check.ok, binaryHash }));
