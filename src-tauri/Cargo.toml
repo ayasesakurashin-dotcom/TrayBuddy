@@ -1,6 +1,6 @@
 [package]
 name = "traybuddy"
-version = "0.3.1"
+version = "0.4.0"
 description = ""
 authors = ["cafel"]
 edition = "2021"
@@ -35,7 +35,8 @@ serde_json = "1"
 dunce = "1.0"
 getrandom = "0.2"
 rusqlite = { version = "0.32", features = ["bundled"] }
-chrono = "0.4"
+chrono = { version = "0.4", features = ["serde"] }
+chrono-tz = "0.10"
 lazy_static = "1.4"
 zip = "2.3.0"
 reqwest = { version = "0.12", features = ["json", "blocking", "multipart"] }
@@ -52,6 +53,8 @@ windows = { version = "0.58", features = [
     "Media_Control",
     "Foundation",
     "Foundation_Collections",
+    "Devices_Geolocation",
+    "Security_Authorization_AppCapabilityAccess",
     # Core Audio API (音频会话枚举)
     "Win32_Media_Audio",
     "Win32_Media_Audio_Endpoints",  # IAudioMeterInformation

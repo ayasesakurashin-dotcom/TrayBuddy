@@ -33,6 +33,120 @@ beforeEach(() => {
   });
 });
 
+describe('screen questions and request receipts', () => {
+  const completed = {request:8,turn_id:'turn-8',result:'completed',text_committed:true,observation_ids:['observation-8'],history_epoch:0,replayed:false};
+  it('keeps date receipts in the bottom-left status through reply and voice stages, then clears them on a new send', async () => {
+    const page = render(CompanionInput); await flushAsync();
+    const notice = '已保存特殊日期：每年公历10月25日生日。';
+    const sendStatus = async (event_seq:number, message:string, extra:Record<string,unknown>={}) => {
+      mocks.handlers.get('companion-status')?.({payload:{request:8,event_seq,message,busy:true,notice,...extra}});
+      await flushAsync();
+    };
+    await sendStatus(1,'正在生成回复…');
+    expect(page.getByRole('status').textContent).toBe(notice);
+    expect(page.getByRole('status').getAttribute('title')).toBe(notice);
+    await sendStatus(2,'正在准备回复语音…');
+    await sendStatus(3,'就绪',{busy:false});
+    expect(page.getByRole('status').textContent).toBe(notice);
+    await fireEvent.input(page.getByLabelText('给艾玛的消息'),{target:{value:'接下来聊别的'}});
+    await fireEvent.click(page.getByRole('button',{name:'发送'})); await flushAsync();
+    expect(page.queryByText(notice)).toBeNull();
+  });
+  it('preserves higher priority failure warnings and rejects stale date notices', async () => {
+    const page = render(CompanionInput); await flushAsync();
+    mocks.handlers.get('companion-status')?.({payload:{request:9,event_seq:1,message:'就绪',busy:false,warning:'本次调用搜索工具失败',notice:'已保存特殊日期'}});
+    await flushAsync();
+    expect(page.getByRole('status').textContent).toBe('本次调用搜索工具失败');
+    mocks.handlers.get('companion-status')?.({payload:{request:8,event_seq:99,message:'就绪',busy:false,notice:'迟到的保存提示'}});
+    await flushAsync();
+    expect(page.queryByText('迟到的保存提示')).toBeNull();
+  });
+  it('restores a date receipt when input opens collapsed', async () => {
+    view.notice='已保存特殊日期：生日';view.settings.input_collapsed=true;
+    const page=render(CompanionInput);await flushAsync();
+    const entry=page.getByRole('button',{name:'展开聊天输入框'});
+    expect(entry.getAttribute('title')).toBe(view.notice);
+    expect(entry.textContent).toContain('查看本次提示');
+  });
+  it('prepares a target without sending, then attaches it to the original question exactly once', async () => {
+    view.settings.vision = {base_url:'https://vision.example',model:'vision',has_key:true};
+    mocks.invoke.mockImplementation(async (command: string) => {
+      if (command === 'companion_get') return structuredClone(view);
+      if (command === 'companion_prepare_screen') return {target_token:'ticket',label:'编辑器窗口',scope:'foreground',expires_at:'2099-01-01'};
+      if (command === 'companion_send') return completed;
+    });
+    const page=render(CompanionInput); await flushAsync();
+    await fireEvent.input(page.getByLabelText('给艾玛的消息'),{target:{value:'这个报错怎么解决？'}});
+    await fireEvent.click(page.getByRole('button',{name:'带上当前屏幕'})); await flushAsync();
+    expect(mocks.invoke.mock.calls.filter(call=>call[0]==='companion_send')).toHaveLength(0);
+    expect(page.getByText('发送时观察：编辑器窗口')).toBeTruthy();
+    await fireEvent.click(page.getByRole('button',{name:'发送'})); await flushAsync();
+    const sends=mocks.invoke.mock.calls.filter(call=>call[0]==='companion_send');
+    expect(sends).toHaveLength(1);
+    expect(sends[0][1].payload).toMatchObject({text:'这个报错怎么解决？',expected_history_epoch:0,screen:{mode:'fresh',target_token:'ticket'}});
+    expect((page.getByLabelText('给艾玛的消息') as HTMLTextAreaElement).value).toBe('');
+    expect(page.queryByText('发送时观察：编辑器窗口')).toBeNull();
+  });
+
+  it('keeps a newly edited draft when the previous send finishes', async () => {
+    let finish!: (value: unknown)=>void;
+    mocks.invoke.mockImplementation(async (command:string)=>{
+      if(command==='companion_get')return structuredClone(view);
+      if(command==='companion_send')return new Promise(resolve=>finish=resolve);
+    });
+    const page=render(CompanionInput);await flushAsync();
+    const input=page.getByLabelText('给艾玛的消息');
+    await fireEvent.input(input,{target:{value:'第一条问题'}});
+    await fireEvent.click(page.getByRole('button',{name:'发送'}));await flushAsync();
+    await fireEvent.input(input,{target:{value:'还没发送的第二条'}});
+    finish(completed);await flushAsync();
+    expect((input as HTMLTextAreaElement).value).toBe('还没发送的第二条');
+    expect(localStorage.getItem('ema-companion-draft')).toBe('还没发送的第二条');
+  });
+
+  it('shows search failure in the status area and preserves the question for an explicit retry', async () => {
+    mocks.invoke.mockImplementation(async(command:string)=>{
+      if(command==='companion_get')return structuredClone(view);
+      if(command==='companion_send')return {...completed,result:'failed',text_committed:false,turn_id:null,error_code:'search_timeout',warning_code:'search_timeout'};
+    });
+    const page=render(CompanionInput);await flushAsync();
+    await fireEvent.input(page.getByLabelText('给艾玛的消息'),{target:{value:'请查证这个版本的发布日期'}});
+    await fireEvent.click(page.getByRole('button',{name:'发送'}));await flushAsync();
+    expect(page.getByRole('status').textContent).toContain('本次调用搜索工具失败');
+    expect((page.getByLabelText('给艾玛的消息') as HTMLTextAreaElement).value).toBe('请查证这个版本的发布日期');
+    expect(mocks.invoke.mock.calls.filter(call=>call[0]==='companion_send')).toHaveLength(1);
+    expect(mocks.invoke.mock.calls.some(call=>call[0]==='companion_speech_preview')).toBe(false);
+  });
+
+  it('uses a committed receipt after transport failure without resending or recapturing', async () => {
+    mocks.invoke.mockImplementation(async(command:string)=>{
+      if(command==='companion_get')return structuredClone(view);
+      if(command==='companion_send')throw new Error('transport lost');
+      if(command==='companion_request_receipt')return {client_message_id:'saved',history_epoch:0,state:'finished',request:8,turn_id:'turn-8',text_committed:true,outcome:completed};
+    });
+    const page=render(CompanionInput);await flushAsync();
+    await fireEvent.input(page.getByLabelText('给艾玛的消息'),{target:{value:'已经保存的问题'}});
+    await fireEvent.click(page.getByRole('button',{name:'发送'}));await flushAsync();
+    expect((page.getByLabelText('给艾玛的消息') as HTMLTextAreaElement).value).toBe('');
+    expect(mocks.invoke.mock.calls.filter(call=>call[0]==='companion_send')).toHaveLength(1);
+    expect(mocks.invoke.mock.calls.some(call=>call[0]==='companion_prepare_screen')).toBe(false);
+  });
+
+  it('rejects stale request status after a newer request became active', async () => {
+    const page=render(CompanionInput);await flushAsync();
+    mocks.handlers.get('companion-status')?.({payload:{request:9,event_seq:3,message:'正在查找资料…',busy:true}});
+    mocks.handlers.get('companion-status')?.({payload:{request:8,event_seq:999,message:'旧请求就绪',busy:false}});
+    await flushAsync();
+    expect(page.getByRole('status').textContent).toBe('正在查找资料…');
+    expect(page.getByRole('button',{name:'停止'})).toBeTruthy();
+  });
+  it('recovers a committed send after window recreation without restoring a screenshot action',async()=>{
+    localStorage.setItem('ema-companion-draft','已提交的问题');localStorage.setItem('companion-pending-input','old-receipt');localStorage.setItem('companion-pending-text','已提交的问题');
+    mocks.invoke.mockImplementation(async(command:string)=>{if(command==='companion_get')return structuredClone(view);if(command==='companion_request_receipt')return{client_message_id:'old-receipt',history_epoch:0,state:'finished',request:null,turn_id:'turn-8',text_committed:true,outcome:completed};});
+    const page=render(CompanionInput);await flushAsync();expect((page.getByLabelText('给艾玛的消息') as HTMLTextAreaElement).value).toBe('');expect(localStorage.getItem('companion-pending-input')).toBeNull();expect(mocks.invoke.mock.calls.some(c=>c[0]==='companion_send'||c[0]==='companion_prepare_screen')).toBe(false);
+  });
+});
+
 describe('manual companion input collapse', () => {
   it('keeps the draft and focuses the input when explicitly expanded again', async () => {
     const page = render(CompanionInput);

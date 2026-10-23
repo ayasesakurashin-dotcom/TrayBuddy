@@ -56,6 +56,7 @@
   /** 打字速度（毫秒/字符） */
   export let typeSpeed: number = 50;
   export let plainText: boolean = false;
+  export let autoClose: boolean = true;
 
   // ======================================================================= //
   // 状态
@@ -118,7 +119,7 @@
       // 设置自动关闭（有分支选项的气泡也会在持续时间后消失）
       const autoCloseDuration =
         duration > 0 ? duration : BUBBLE_DEFAULT_AUTO_CLOSE_MS;
-      startAutoClose(autoCloseDuration);
+      if (autoClose) startAutoClose(autoCloseDuration);
     }
   });
 
@@ -141,7 +142,7 @@
     // 设置自动关闭（有分支选项的气泡也会在持续时间后消失）
     const autoCloseDuration =
       duration > 0 ? duration : calculateDisplayDuration(text);
-    startAutoClose(autoCloseDuration);
+    if (autoClose) startAutoClose(autoCloseDuration);
   }
 
   /**

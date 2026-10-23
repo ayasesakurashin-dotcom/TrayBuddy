@@ -51,6 +51,7 @@ describe('WindowCore companion bubble ownership', () => {
   beforeEach(() => {
     vi.useFakeTimers();
     vi.clearAllMocks();
+    mocks.audio.play.mockImplementation(async () => true);
     mocks.handlers.clear();
     mocks.invoke.mockImplementation(async command => {
       switch (command) {
@@ -85,6 +86,51 @@ describe('WindowCore companion bubble ownership', () => {
     expect(mocks.handlers.get('companion-reply')).toHaveLength(1);
     return {show, hide, manager};
   }
+
+  function nativeResources() {
+    const original=mocks.invoke.getMockImplementation()!;
+    mocks.invoke.mockImplementation(async(command,args)=>{
+      if(command==='get_text_by_name')return {text:`原有活动：${(args as {name:string}).name}`,duration:3};
+      if(command==='care_validate_offer'||command==='care_presented')return true;
+      return original(command,args);
+    });
+  }
+  const careOffer=(generation:number)=>({delivery_id:`care-${generation}`,generation,interaction_epoch:1,text:'自动关怀正文',expires_at:9999});
+  const nativeState=(name:string)=>({state:{name,persistent:false,anima:'',audio:name,text:name,priority:0},play_once:true});
+
+  it.each(['night','random1_1'])('keeps native %s text/audio and rejects care until the activity finishes',async name=>{
+    const {show}=await init();nativeResources();
+    let finishAudio:(()=>void)|undefined;
+    mocks.audio.play.mockImplementation(async(_name?:unknown,end?:()=>void)=>{finishAudio=end;return true;});
+    await dispatch('state-change',nativeState(name));
+    expect(mocks.audio.play).toHaveBeenCalledWith(name,expect.any(Function));
+    expect(show.mock.lastCall?.[0].text).toBe(`原有活动：${name}`);
+    await dispatch('care-offer',careOffer(10));
+    expect(show).toHaveBeenCalledOnce();
+    expect(mocks.invoke.mock.calls.some(call=>call[0]==='care_presented')).toBe(false);
+    finishAudio?.();core!.handleBubbleClose();
+    await dispatch('care-offer',careOffer(11));
+    expect(show.mock.lastCall?.[0].text).toBe('自动关怀正文');
+    expect(mocks.invoke.mock.calls.filter(call=>call[0]==='care_presented')).toHaveLength(1);
+    expect(mocks.invoke.mock.calls.some(call=>['companion_send','companion_observe','companion_reading'].includes(call[0]))).toBe(false);
+  });
+
+  it('lets a native activity preempt care without late cancellation hiding its bubble',async()=>{
+    const {show,hide}=await init();nativeResources();
+    await dispatch('care-offer',careOffer(1));
+    expect(show.mock.lastCall?.[0].text).toBe('自动关怀正文');
+    await dispatch('state-change',nativeState('random4_1'));
+    expect(mocks.audio.play).toHaveBeenCalledWith('random4_1',expect.any(Function));
+    expect(show.mock.lastCall?.[0].text).toBe('原有活动：random4_1');
+    const hides=hide.mock.calls.length;
+    await dispatch('care-cancel',{generation:2});
+    expect(hide).toHaveBeenCalledTimes(hides);
+    await dispatch('care-offer',careOffer(3));
+    expect(show).toHaveBeenCalledTimes(2);
+    // Only the genuine care shown before the event was acknowledged.
+    expect(mocks.invoke.mock.calls.filter(call=>call[0]==='care_presented')).toHaveLength(1);
+    expect(mocks.invoke).toHaveBeenCalledWith('care_finished',{deliveryId:'care-1',generation:1});
+  });
 
   it.each([true, false])('does not overwrite or hide AI text when a pending preset resolves (preset bubble=%s)', async branch_show_bubble => {
     const {show, hide} = await init();

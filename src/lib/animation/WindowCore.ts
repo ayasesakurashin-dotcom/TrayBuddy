@@ -1,5 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import { attachCompanion } from "$lib/companion/presentation";
+import { attachCare } from "$lib/care/presentation";
 import { listen, emit } from "@tauri-apps/api/event";
 import { getCurrentWindow, cursorPosition, LogicalPosition } from "@tauri-apps/api/window";
 import { initI18n, destroyI18n, onLangChange, t as i18nT } from "$lib/i18n";
@@ -178,6 +179,7 @@ export function createWindowCore(options: {
 
   let audioManager: AudioManager | null = null;
   let companion: Awaited<ReturnType<typeof attachCompanion>> | null = null;
+  let care: Awaited<ReturnType<typeof attachCare>> | null = null;
   let triggerManager: TriggerManager | null = null;
 
   type PendingBranchSelection = {
@@ -204,6 +206,7 @@ export function createWindowCore(options: {
   let isPlayOnce = false;
   let playSessionToken = 0;
   let bubbleSessionToken = 0;
+  const presetActive = () => isPlayOnce && !(animationComplete && audioComplete && bubbleComplete);
 
   let globalKeyboardEnabled = false;
   let globalMouseEnabled = false;
@@ -609,6 +612,8 @@ export function createWindowCore(options: {
    * - 抬起时根据是否拖拽决定触发 click 或 drag_end
    */
   function handleMouseDown(e: MouseEvent) {
+    care?.stop();
+    void invoke("care_interaction_activity", {active:true}).catch(() => {});
 
     if (e.button !== 0) return;
 
@@ -850,7 +855,7 @@ export function createWindowCore(options: {
       const showBranchBubble = state.branch_show_bubble !== false;
       // A preset started before the first AI packet can finish its async text
       // lookup later. It must not replace a page that is still being read.
-      if (companion?.isActive()) {
+      if (companion?.isActive() || care?.isActive()) {
         bubbleComplete = true;
         checkComplete();
         return;
@@ -978,6 +983,9 @@ export function createWindowCore(options: {
    * 并在三者完成时触发后端 on_animation_complete。
    */
   async function playState(state: StateInfo, playOnce: boolean) {
+    // Native activities retain their own text/audio/animation path. Care yields;
+    // it must never consume a login/random event or mark that event completed.
+    if (playOnce) care?.stop();
 
     pendingBranchSelection = null;
 
@@ -1017,7 +1025,7 @@ export function createWindowCore(options: {
 
     if (playSessionToken !== token) return;
 
-    if (audioManager && state.audio && !companion?.isActive()) {
+    if (audioManager && state.audio && !companion?.isActive() && !care?.isActive()) {
       if (!playOnce) {
         const success = await audioManager.play(state.audio, undefined, true);
         if (playSessionToken !== token) return;
@@ -1043,7 +1051,7 @@ export function createWindowCore(options: {
 
     if (playSessionToken !== token) return;
 
-    if (companion?.isActive()) {
+    if (companion?.isActive() || care?.isActive()) {
       bubbleComplete = true;
       checkComplete();
     } else if (playOnce && (state.text || (state.branch && state.branch.length > 0))) {
@@ -1160,10 +1168,18 @@ export function createWindowCore(options: {
       audioManager = await getAudioManager();
       companion = await attachCompanion({
         audio: audioManager,
-        show: (config) => refs.getBubbleManager()?.show(config),
+        show: (config) => { care?.stop(); refs.getBubbleManager()?.show(config); },
         hide: () => refs.getBubbleManager()?.hide(),
         allowed: () => bindings.getShowCharacter() && !bindings.getSilenceMode(),
         releasePreset: () => { pendingBranchSelection = null; audioComplete = true; bubbleComplete = true; checkComplete(); },
+      });
+      care = await attachCare({
+        show: (config) => refs.getBubbleManager()?.show(config),
+        hide: () => refs.getBubbleManager()?.hide(),
+        allowed: () => bindings.getShowCharacter() && !bindings.getSilenceMode(),
+        companionActive: () => !!companion?.isActive(),
+        presetActive,
+        releasePreset: () => { audioManager?.stop(); },
       });
       triggerManager = getTriggerManager();
 
@@ -1244,7 +1260,7 @@ export function createWindowCore(options: {
       unlistenAiToolActivated = await listen<{ window_name: string; model?: string }>(
         "ai-tool-activated",
         (event) => {
-          if (companion?.isActive()) return;
+          if (companion?.isActive() || care?.isActive()) return;
           const bm = refs.getBubbleManager();
           if (bm && !bm.isShowing()) {
             const windowName = event.payload.window_name;
@@ -1407,6 +1423,7 @@ export function createWindowCore(options: {
     stopCursorPolling();
 
 
+    care?.destroy();
     companion?.destroy();
     audioManager?.destroy();
     triggerManager?.destroy();

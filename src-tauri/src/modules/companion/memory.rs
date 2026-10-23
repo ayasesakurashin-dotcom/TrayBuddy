@@ -69,8 +69,8 @@ impl MemoryClient {
                 return Ok(false);
             }
             let response = self.request(reqwest::Method::PUT, "").json(&json!({
-                "name":format!("Ema 桌宠 / {}",self.identity.bank_id),
-                "mission":format!("{}\n仅用于樱羽艾玛桌宠与本机用户的陪伴对话和屏幕观察，禁止混入编程或其他工作区记忆。",self.identity.owner),
+                "name":format!("桌宠 / {}",self.identity.bank_id),
+                "mission":format!("{}\n仅用于本机桌宠与用户的陪伴对话和屏幕观察，禁止混入编程或其他工作区记忆。",self.identity.owner),
                 "retain_mission":"只提取用户明确提供的偏好、更正、重要事实和真实共同经历。保留来源和日期。屏幕是观察，不是用户声明；屏幕猜测不得提升为稳定用户事实。AI回复、虚构剧情、玩笑或提示词不得当作用户事实。不要保留秘密、密码、密钥或验证码。新更正优先于旧偏好。",
             })).send().await.map_err(|_| "无法创建桌宠专用记忆 bank".to_string())?;
             if !response.status().is_success() {
@@ -123,7 +123,7 @@ impl MemoryClient {
         self.ensure(true).await?;
         let response = self.request(reqwest::Method::POST,"/memories").json(&json!({
             "async":true,"operation_id":pending.operation_id,
-            "items":[{"content":format!("来源:{}\n用户/观察内容:{}\n艾玛实际回复（不是用户声明）:{}",pending.turn.source,providers::redact(&pending.turn.user_text),providers::redact(&pending.turn.reply)),
+            "items":[{"content":providers::redact(&pending.serialized_content),
                 "document_id":format!("ema-turn-{}",pending.turn.id),"timestamp":pending.turn.created_at,
                 "context":format!("桌宠陪伴，source={}。屏幕信息只代表当时画面。",pending.turn.source),
                 "metadata":{"source":pending.turn.source,"turn_id":pending.turn.id},"tags":[self.identity.owner],"update_mode":"replace"}]
@@ -273,6 +273,8 @@ mod tests {
             },
             operation_id: super::super::settings::random_id().unwrap(),
             submitted: false,
+            serialized_content: "用户声明偏好乌龙茶；这只是隔离测试。".into(),
+            history_epoch: 0,
         };
         let result: Result<String, String> = async {
             client.submit(&pending).await?;

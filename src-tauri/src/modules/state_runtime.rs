@@ -43,6 +43,11 @@ impl StateLimitsContext {
 }
 
 impl StateManager {
+    fn environment_allows_state(&self,state:&StateInfo,rm:&ResourceManager)->bool {
+        let id=rm.current_mod.as_ref().map(|m|m.manifest.id.as_ref()).unwrap_or("");
+        crate::modules::care::profile::allows_preset(id,state)
+            && (self.app_handle.is_none() || crate::modules::environment_service::legacy_state_weather_allowed(state))
+    }
     /// 启动定时触发器线程
     pub fn start_timer_loop(&mut self, app_handle: tauri::AppHandle) {
         let timer_enabled = Arc::new(AtomicBool::new(false));
@@ -133,7 +138,8 @@ impl StateManager {
                         }
                         rm.get_state_by_name(c.state.as_ref())
                             .and_then(|s| {
-                                if s.is_enable()
+                                let mod_id=rm.current_mod.as_ref().map(|m|m.manifest.id.as_ref()).unwrap_or("");
+                                if s.is_enable() && crate::modules::care::profile::allows_preset(mod_id,s)
                                     && Self::is_state_allowed_by_limits_static(
                                         s,
                                         mod_data_value,
@@ -193,6 +199,9 @@ impl StateManager {
     /// 发送状态切换事件到前端
     fn emit_state_change(&self, state: &Arc<StateInfo>, play_once: bool) {
         if let Some(ref app_handle) = self.app_handle {
+            if play_once {
+                crate::modules::care::yield_to_preset(app_handle);
+            }
             let event = StateChangeEvent {
                 state: Arc::clone(state),
                 play_once,

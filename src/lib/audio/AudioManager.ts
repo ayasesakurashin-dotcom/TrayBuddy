@@ -372,10 +372,10 @@ export class AudioManager {
    * @param onEnd - 播放完成回调
    * @returns 成功返回 true
    */
-  async playUrl(url: string, onEnd?: () => void): Promise<boolean> {
+  async playUrl(url: string, onEnd?: () => void, onStart?: () => void): Promise<boolean> {
     if (!url) {
       onEnd?.();
-      return true;
+      return false;
     }
 
     // 停止当前播放
@@ -384,35 +384,41 @@ export class AudioManager {
       this.audio.src = "";
       this.audio.onended = null;
       this.audio.onerror = null;
+      this.audio.onplaying = null;
       this.audio = null;
     }
     this.onEndCallback = null;
 
+    const owned = new Audio();
+    this.audio = owned;
+    this.onEndCallback = onEnd || null;
+    let started = false;
+    let failed = false;
+    const finish = () => {
+      if (this.audio !== owned) return;
+      owned.onplaying = null;
+      const callback = this.onEndCallback;
+      this.onEndCallback = null;
+      callback?.();
+    };
     try {
-      this.audio = new Audio();
-      this.audio.src = url;
-      this.audio.volume = this.muted ? 0 : this.volume;
-      this.audio.loop = false;
-      this.onEndCallback = onEnd || null;
-
-      this.audio.onended = () => {
-        logAudio(`URL audio playback ended: '${url}'`);
-        this.onEndCallback?.();
-        this.onEndCallback = null;
+      owned.src = url;
+      owned.volume = this.muted ? 0 : this.volume;
+      owned.loop = false;
+      owned.onplaying = () => {
+        if (this.audio !== owned || started || failed) return;
+        started = true;
+        onStart?.();
       };
-      this.audio.onerror = () => {
-        logAudioError(`Exception playing URL audio '${url}':`, this.audio?.error);
-        this.onEndCallback?.();
-        this.onEndCallback = null;
-      };
-
-      await this.audio.play();
-      return true;
+      owned.onended = finish;
+      owned.onerror = () => { failed = true; finish(); };
+      await owned.play();
+      return this.audio === owned && !failed;
     } catch (e) {
       logAudioError(`Exception caught while playing URL audio '${url}':`, e);
-      this.onEndCallback?.();
-      this.onEndCallback = null;
-      return true;
+      failed = true;
+      finish();
+      return false;
     }
   }
 

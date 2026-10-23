@@ -1,8 +1,14 @@
 use rusqlite::{params, Connection};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use std::path::Path;
+#[path = "store_v2.rs"]
+mod v2;
+pub use v2::{Checkpoint, ForgetObservationPreview, HistoryTurn, ReferenceState};
+#[cfg(test)]
+#[path = "store_v2_tests.rs"]
+mod v2_tests;
 
-#[derive(Clone, Serialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Turn {
     pub id: String,
     pub source: String,
@@ -15,6 +21,8 @@ pub struct Pending {
     pub turn: Turn,
     pub operation_id: String,
     pub submitted: bool,
+    pub serialized_content: String,
+    pub history_epoch: u64,
 }
 pub struct Store {
     pub db: Connection,
@@ -35,6 +43,10 @@ fn turn(row: &rusqlite::Row<'_>) -> rusqlite::Result<Turn> {
 }
 impl Store {
     pub fn open(path: &Path, bank_id: &str) -> Result<Self> {
+        v2::open(path, bank_id)
+    }
+    #[allow(dead_code)]
+    fn open_legacy(path: &Path, bank_id: &str) -> Result<Self> {
         let db = Connection::open(path).map_err(err)?;
         db.busy_timeout(std::time::Duration::from_secs(3))
             .map_err(err)?;
@@ -61,8 +73,8 @@ impl Store {
         Ok(Self { db })
     }
     pub fn insert(&self, value: &Turn) -> Result<()> {
-        self.db.execute("INSERT INTO turns(id,source,user_text,reply,japanese,created_at,operation_id) VALUES(?1,?2,?3,?4,?5,?6,?7)",
-            params![value.id,value.source,value.user_text,value.reply,value.japanese,value.created_at,super::settings::random_id()?]).map_err(err)?;
+        let metadata = super::observations::TurnMetadata::default();
+        self.commit_turn(value, &metadata, None, &[], self.history_epoch()?, None)?;
         Ok(())
     }
     pub fn input(&self, id: &str, text: &str, status: &str) -> Result<()> {
@@ -79,7 +91,7 @@ impl Store {
         Ok(())
     }
     pub fn recent(&self, limit: usize) -> Result<Vec<Turn>> {
-        let mut stmt = self.db.prepare("SELECT id,source,user_text,reply,japanese,created_at FROM turns WHERE forgotten=0 ORDER BY rowid DESC LIMIT ?1").map_err(err)?;
+        let mut stmt = self.db.prepare("SELECT t.id,t.source,t.user_text,t.reply,t.japanese,t.created_at FROM turns t JOIN dialogue_order d ON d.turn_id=t.id WHERE t.forgotten=0 ORDER BY d.seq DESC LIMIT ?1").map_err(err)?;
         let mut rows = stmt
             .query_map([limit.min(200) as i64], turn)
             .map_err(err)?
@@ -89,14 +101,19 @@ impl Store {
         Ok(rows)
     }
     pub fn pending(&self) -> Result<Option<Pending>> {
-        let mut stmt = self.db.prepare("SELECT id,source,user_text,reply,japanese,created_at,operation_id,sync_state FROM turns WHERE forgotten=0 AND sync_state!='done' ORDER BY rowid LIMIT 1").map_err(err)?;
+        let mut stmt = self.db.prepare("SELECT id,source,user_text,reply,japanese,created_at,operation_id,sync_state FROM turns WHERE forgotten=0 AND sync_state NOT IN ('done','local_only') ORDER BY rowid LIMIT 1").map_err(err)?;
         let mut rows = stmt.query([]).map_err(err)?;
         match rows.next().map_err(err)? {
-            Some(row) => Ok(Some(Pending {
-                turn: turn(row).map_err(err)?,
-                operation_id: row.get(6).map_err(err)?,
-                submitted: row.get::<_, String>(7).map_err(err)? == "submitted",
-            })),
+            Some(row) => {
+                let turn = turn(row).map_err(err)?;
+                Ok(Some(Pending {
+                    serialized_content: self.memory_content(&turn.id)?,
+                    history_epoch: self.history_epoch()?,
+                    turn,
+                    operation_id: row.get(6).map_err(err)?,
+                    submitted: row.get::<_, String>(7).map_err(err)? == "submitted",
+                }))
+            }
             None => Ok(None),
         }
     }
@@ -121,7 +138,7 @@ impl Store {
     pub fn pending_count(&self) -> Result<i64> {
         self.db
             .query_row(
-                "SELECT COUNT(*) FROM turns WHERE forgotten=0 AND sync_state!='done'",
+                "SELECT COUNT(*) FROM turns WHERE forgotten=0 AND sync_state NOT IN ('done','local_only')",
                 [],
                 |r| r.get(0),
             )
@@ -135,7 +152,7 @@ impl Store {
             .map_err(err)
     }
     pub fn all(&self) -> Result<Vec<Turn>> {
-        let mut stmt=self.db.prepare("SELECT id,source,user_text,reply,japanese,created_at FROM turns WHERE forgotten=0 ORDER BY rowid").map_err(err)?;
+        let mut stmt=self.db.prepare("SELECT t.id,t.source,t.user_text,t.reply,t.japanese,t.created_at FROM turns t JOIN dialogue_order d ON d.turn_id=t.id WHERE t.forgotten=0 ORDER BY d.seq").map_err(err)?;
         let rows = stmt
             .query_map([], turn)
             .map_err(err)?
@@ -144,8 +161,10 @@ impl Store {
         Ok(rows)
     }
     pub fn summary(&self) -> String {
-        self.db
-            .query_row("SELECT text FROM summaries WHERE id=1", [], |r| r.get(0))
+        self.active_checkpoint()
+            .ok()
+            .flatten()
+            .map(|c| c.body)
             .unwrap_or_default()
     }
     pub fn profile(&self) -> String {
@@ -196,6 +215,10 @@ impl Store {
         Ok(())
     }
     pub fn forget(&mut self, id: Option<&str>) -> Result<()> {
+        self.forget_v2(id)
+    }
+    #[allow(dead_code)]
+    fn forget_legacy(&mut self, id: Option<&str>) -> Result<()> {
         let tx = self.db.transaction().map_err(err)?;
         if let Some(id) = id {
             tx.execute("UPDATE turns SET forgotten=1,user_text='',reply='',japanese='',sync_state='done' WHERE id=?1", [id]).map_err(err)?;
@@ -233,7 +256,7 @@ impl Store {
         // New operation IDs after deleting the bank, since old operation IDs may still be retained by the server.
         let ids = {
             let mut q = tx
-                .prepare("SELECT id FROM turns WHERE forgotten=0")
+                .prepare("SELECT id FROM turns WHERE forgotten=0 AND sync_state!='local_only'")
                 .map_err(err)?;
             let rows = q
                 .query_map([], |r| r.get::<_, String>(0))

@@ -980,6 +980,9 @@ where
 #[derive(Debug, Serialize, Deserialize, Clone)]
 #[serde(default)]
 pub struct StateInfo {
+    /// Marks a legacy automatic-care state for takeover by the generic care service.
+    #[serde(default)]
+    pub care_category: Option<String>,
     /// 状态唯一标识符（由 Mod 作者在 manifest 中定义）
     pub name: Box<str>,
 
@@ -1080,6 +1083,7 @@ pub struct StateInfo {
 impl Default for StateInfo {
     fn default() -> Self {
         Self {
+            care_category: None,
             name: default_error_name(),
             persistent: false,
 

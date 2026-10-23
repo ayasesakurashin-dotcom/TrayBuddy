@@ -2,6 +2,7 @@
 export const REPLY_CHUNK_MAX_CHARS = 80;
 export const REPLY_READ_HOLD_MS = 4000;
 export const REPLY_STREAM_FLUSH_MS = 600;
+const MIN_STREAM_PAGE_CHARS = 8;
 
 const graphemes = new Intl.Segmenter(undefined, { granularity: 'grapheme' });
 const sentenceEnd = /[。！？!?；;\n]/u;
@@ -48,6 +49,11 @@ export class ReplyChunkBuffer {
     }
 
     const fullPage = units.length === REPLY_CHUNK_MAX_CHARS || newlines === 3;
+    // A timer is not evidence that a two-character SSE packet is a full page.
+    // Keep unfinished prefixes such as “查询” for the following packet. A real
+    // short answer is released at completion, or after sentence punctuation.
+    if (!this.done && units.filter(unit => /\S/u.test(unit)).length < MIN_STREAM_PAGE_CHARS
+      && !units.some(unit => /[。！？!?]/u.test(unit))) return null;
     let length = units.length;
     if (fullPage || (!this.done && !force)) {
       // Prefer a sentence, then a word boundary. Avoid a one-word first page

@@ -340,6 +340,7 @@ impl StateManager {
         force: bool,
         rm: &ResourceManager,
     ) -> Result<bool, String> {
+        if !self.environment_allows_state(&state,rm) { return Ok(false); }
         if !state.persistent {
             return Err(format!("State '{}' is not a persistent state", state.name));
         }
@@ -426,6 +427,7 @@ impl StateManager {
         force: bool,
         rm: &ResourceManager,
     ) -> Result<bool, String> {
+        if !self.environment_allows_state(&state,rm) { return Ok(false); }
         if state.persistent {
             return Err(format!(
                 "State '{}' is a persistent state, use set_persistent_state",
@@ -591,7 +593,7 @@ impl StateManager {
         // 使用预取的上下文进行限制判断，不再在持有 sm 锁时获取 storage 锁
         let enabled_states: Vec<&StateInfo> = states
             .iter()
-            .filter(|s| s.is_enable() && limits_ctx.is_allowed(s))
+            .filter(|s| s.is_enable() && limits_ctx.is_allowed(s) && self.environment_allows_state(s,rm))
             .collect();
 
 
@@ -1748,3 +1750,14 @@ mod tests {
 
 
 
+    #[test]
+    fn explicit_care_states_do_not_consume_an_ordinary_random_trigger() {
+        let rm=ResourceManager::new_with_search_paths(vec![]);
+        let ctx=StateLimitsContext::default_unlimited();
+        let care=StateInfo{name:"marked-care".into(),care_category:Some("weather".into()),..Default::default()};
+        let native=StateInfo{name:"native-random".into(),..Default::default()};
+        let mut sm=StateManager::new();
+        assert_eq!(sm.trigger_random_state(&[care.clone()],&rm,&ctx),Ok(false));
+        assert_eq!(sm.trigger_random_state(&[care,native],&rm,&ctx),Ok(true));
+        assert_eq!(sm.get_current_state().unwrap().name.as_ref(),"native-random");
+    }

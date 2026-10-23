@@ -60,12 +60,20 @@ describe('companion reply pages', () => {
   it('buffers a link spanning packets and displays its label once', () => {
     const buffer = new ReplyChunkBuffer();
     buffer.append('参考[文档', false);
-    expect(buffer.take(true)).toBe('参考');
+    expect(buffer.take(true)).toBeNull();
     buffer.append('参考[文档]', false);
     expect(buffer.take(true)).toBeNull();
     buffer.append('参考[文档](https://example.com', false);
     expect(buffer.take(true)).toBeNull();
     buffer.append('参考[文档](https://example.com)中的说明。', true);
-    expect(buffer.take()).toBe('文档中的说明。');
+    expect(buffer.take()).toBe('参考文档中的说明。');
+  });
+
+  it('does not promote a tiny unfinished prefix to a page, but keeps short complete answers', () => {
+    const buffer=new ReplyChunkBuffer();
+    buffer.append('查询',false);expect(buffer.take(true)).toBeNull();expect(buffer.hasPending).toBe(true);
+    const full='查询资料显示，具体时间仍需要等待官方公告。';
+    buffer.append(full,true);expect(buffer.take()).toBe(full);expect(buffer.hasPending).toBe(false);
+    const short=new ReplyChunkBuffer();short.append('好的',true);expect(short.take()).toBe('好的');
   });
 });

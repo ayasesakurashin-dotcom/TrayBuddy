@@ -123,7 +123,7 @@ fn sync_now(app: &tauri::AppHandle) -> Result<(), String> {
         let settings = service.settings.lock().unwrap();
         (settings.input_enabled, settings.input_collapsed)
     };
-    let (width, height) = if collapsed { (132., 32.) } else { (330., 84.) };
+    let (width, height) = if collapsed { (132., 32.) } else if service.input_expanded.load(std::sync::atomic::Ordering::SeqCst) { (330., 110.) } else { (330., 84.) };
     let allowed = Companion::allowed(app, false);
     let pet = crate::get_render_window(app);
     if !enabled
@@ -144,7 +144,7 @@ fn sync_now(app: &tauri::AppHandle) -> Result<(), String> {
     } else {
         let window =
             WebviewWindowBuilder::new(app, INPUT_LABEL, WebviewUrl::App("companion_input".into()))
-                .title("和艾玛聊聊")
+                .title(format!("和{}聊聊", super::character::default_profile().display_name))
                 .inner_size(width, height)
                 .decorations(false)
                 .transparent(true)

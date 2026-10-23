@@ -27,7 +27,7 @@ use crate::modules::constants::{
 use crate::modules::event_manager::{emit, emit_from_tauri_window, emit_from_window, emit_settings, events};
 use crate::modules::environment::{
     get_cached_location, get_cached_weather, get_current_datetime, get_current_season,
-    get_time_period, init_environment, DateTimeInfo, EnvironmentManager, GeoLocation, WeatherInfo,
+    get_time_period, DateTimeInfo, EnvironmentManager, GeoLocation, WeatherInfo,
 };
 use crate::modules::media_observer::{
     get_cached_debug_info, MediaDebugInfo, MediaObserver, MediaPlaybackStatus,

@@ -26,6 +26,7 @@ function createMockAudio() {
     oncanplay: null as ((e?: any) => void) | null,
     onended: null as ((e?: any) => void) | null,
     onerror: null as ((e?: any) => void) | null,
+    onplaying: null as ((e?: any) => void) | null,
     play: vi.fn(async () => { _paused = false; }),
     pause: vi.fn(() => { _paused = true; }),
   };
@@ -60,6 +61,31 @@ describe("AudioManager", () => {
   afterEach(() => {
     invokeMock.mockImplementation(originalInvoke ?? (async () => null));
     listenMock.mockImplementation(originalListen ?? (async () => () => {}));
+  });
+
+  it('announces dynamic audio start once on playing, rather than on creation or play promise', async () => {
+    const manager = new AudioManager();
+    const started = vi.fn(), ended = vi.fn();
+    expect(await manager.playUrl('data:audio/mpeg;base64,audio', ended, started)).toBe(true);
+    expect(started).not.toHaveBeenCalled();
+    const owned = audioInstances.at(-1)!;
+    owned.onplaying?.(); owned.onplaying?.();
+    expect(started).toHaveBeenCalledOnce();
+    owned.onended?.(); expect(ended).toHaveBeenCalledOnce();
+  });
+  it('ignores old dynamic audio callbacks after replacement or stop', async () => {
+    const manager = new AudioManager();
+    const firstStart = vi.fn(), secondStart = vi.fn(), secondEnd = vi.fn();
+    await manager.playUrl('first', undefined, firstStart);
+    const first = audioInstances.at(-1)!;
+    const staleStart = first.onplaying, staleError = first.onerror;
+    await manager.playUrl('second', secondEnd, secondStart);
+    staleStart?.(); staleError?.();
+    expect(firstStart).not.toHaveBeenCalled(); expect(secondEnd).not.toHaveBeenCalled();
+    const second = audioInstances.at(-1)!;
+    const lateStart = second.onplaying;
+    manager.stop(); lateStart?.();
+    expect(secondStart).not.toHaveBeenCalled(); expect(secondEnd).toHaveBeenCalledOnce();
   });
 
   // ========================================================================

@@ -82,6 +82,12 @@ if (!globalThis.crypto.randomUUID) {
 const mockInvoke = vi.fn(async (command: string) => {
 
   switch (command) {
+    case "environment_get_snapshot":
+    case "environment_refresh_weather":
+    case "environment_refresh_location":
+      return (await import('./environment-fixture')).environmentFixture();
+    case "care_get_status":
+      return {settings:{schema_version:1,enabled:false,rain:true,night:true,holiday:true,legacy_weather:true,night_start:1380,night_end:120},reason:'自动关怀已关闭',candidates:0,presenting:false};
     case "get_mod_search_paths":
     case "get_available_mods":
     case "get_memos":

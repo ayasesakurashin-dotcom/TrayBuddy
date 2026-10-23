@@ -4,15 +4,18 @@
 
 本仓库是个人 fork：[ayasesakurashin-dotcom/TrayBuddy](https://github.com/ayasesakurashin-dotcom/TrayBuddy)。原有动画、Mod、事件气泡、预设语音、备忘录、提醒与设置继续保留。AI 对话直接访问用户配置的 API，不调用设备上其他智能体。
 
-当前源码版本为 **0.3.1（2026-10-21）**，优化输入框跟随与显隐、长回复流式分片和语音播放期间的重复气泡；见[交互优化记录](docs/companion-interaction-fix-2026-10-21.md)。0.3.0 已移除旧 DSH Web 集成和 Telegram 远程通道。仓库保存完整源码、已有素材、测试和文档；外部模型及 Hindsight 由使用者自行配置。
+当前版本为 **0.4.0（2026-10-24）**，包含上下文与观察分存、当前屏幕提问、按需搜索、独立思考设置、共享环境及通用自动关怀。下载见 [v0.4.0 Release](https://github.com/ayasesakurashin-dotcom/TrayBuddy/releases/tag/v0.4.0)，完整行为和升级说明见 [0.4.0 说明](docs/companion-0.4.0.md)。
 
 ## 文档导航
 
 - [桌宠通用功能与 Mod 文档](README-TRAYBUDDY.md)：保留原项目完整说明、素材署名与多语言教程。
+- [通用自动关怀设计](docs/companion-flexible-care-2026-10-23.md)：日历、特殊日期、优先级和频率限制。
 - [艾玛 AI 使用与数据说明](README-EMA-AI.md)：接口配置、专用记忆与恢复。
 - [实施与验证记录](docs/ema-ai-implementation-2026-10-15.md)。
 - [定时观察未响应的定位与修复](docs/observation-hang-fix-2026-10-18.md)。
 - [输入框与长回复交互优化](docs/companion-interaction-fix-2026-10-21.md)。
+- [网页搜索功能设计书](docs/companion-web-search-design-2026-10-22.md)：固定判断与按需搜索流程、边界和编码验收依据。实现及限制见[本轮记录](docs/companion-0.4.0.md)。
+- [共享环境数据与自动关怀设计稿](docs/companion-environment-care-design-2026-10-22.md)：设备定位与固定城市、IP 兜底、数据时效、随机关怀及交互优先级。实现及限制见[本轮记录](docs/companion-0.4.0.md)。
 - [最初的实验功能计划](docs/ema-ai-experiments-plan-2026-10-15.md)。
 - [更新日志](CHANGELOG.md)。
 
@@ -24,7 +27,7 @@ Ema 模型下方显示独立输入框。移动、缩放或切换显示器 DPI �
 
 “回复字数上限”设为 **0 表示不限**，也可填写正整数限制整条回复。新配置默认不限；旧配置保存的上限继续保留，可手动改为 0。应用不再强制短答或固定 300 token，模型与服务自身限制仍生效。
 
-长回复按内容顺序分成气泡，优先在句子或标点处断开；每片最多 80 个可见字符（按字素计数）和 3 次显式换行。当前片随生成逐步更新，完整显示后停留 4 秒，再展示下一片，直到末尾。完整回复保存到聊天记录。
+长回复按内容顺序分成气泡，优先在句子或标点处断开；每片最多 80 个可见字符（按字素计数）和 3 次显式换行。关闭语音时随生成呈现；有效语音启用时与语音起播同步。每片完整显示后停留 4 秒，再展示下一片，直到末尾。完整回复保存到聊天记录。
 
 右下角点击“收起”，输入框缩成“和艾玛聊聊”按钮；点击小按钮重新展开，并将光标移回输入框。
 
@@ -51,13 +54,13 @@ Ema 模型下方显示独立输入框。移动、缩放或切换显示器 DPI �
 4. 身份文件丢失、数据库绑定不一致或远端所有权不匹配时停止访问，不回退到 `default` 或其他已有 bank。
 5. 不调用列出全部 bank 的接口，不扫描其他工作区的记忆。
 
-手动对话与屏幕观察写入同一个桌宠专用 bank，并保留来源区别。记忆服务离线时保留本机上下文和待同步任务，恢复连接后重试；异步请求的“已受理”与“已完成”分别记录。
+对话与观察在本地分表保存；允许同步的用户对话和观察资料使用同一个桌宠专用 bank，并保留来源区别。联网外部答案和自动关怀不自动同步长期记忆。记忆服务离线时保留本机上下文和待同步任务，恢复连接后重试；异步请求的“已受理”与“已完成”分别记录。
 
 设置页支持最近记录、完整导出、单条遗忘和清空。遗忘先从本机上下文移除内容，并暂停可能含有旧内容的远端召回，再后台清理并重建桌宠自己的 bank；不会清理其他工作区。
 
 ### 中文气泡、日语生成语音
 
-中文回复先流式显示，再完整翻译成贴合角色口吻的日语，随后调用语音合成接口播放。翻译与播放不会重新弹出已显示的回复；回复队列显示期间，预设事件气泡不会覆盖当前内容。原有预设语音继续保留。
+设置中可为当前角色选择朗读语言。中文气泡与合成语音在实际起播时同步开始，日语朗读会先完成独立翻译与语言校验；未启用语音或合成失败时直接显示文字。翻译与播放不会重新弹出已显示的回复；回复队列显示期间，预设事件气泡不会覆盖当前内容。原有预设语音继续保留。
 
 - AI 回复语音默认开启，可在设置与右键菜单关闭；全局静音仍生效。
 - 已适配 Fish Audio，可填写私有声音 ID、调整语速并试听。
@@ -79,7 +82,9 @@ Ema 模型下方显示独立输入框。移动、缩放或切换显示器 DPI �
 
 保留 TrayBuddy 的序列帧、Live2D、PngRemix、3D 模型支持，以及 Mod 创作工具、事件触发、原 AI 小工具、备忘录、提醒等。新 AI 设置界面目前以简体中文为主，原有多语言资源继续保留。
 
-仅预留系统时间与原有天气缓存的只读上下文接口。未开发通用智能体、命令执行、系统任务调度或复杂工具调用。
+共享环境服务提供带地点和时效校验的天气资料。设置支持固定城市、Windows 定位及经确认的 IP 城市兜底。按需网页搜索默认开启，无法确定时不搜索；聊天和识图模型的思考强度独立设置、默认关闭。
+
+自动关怀默认关闭；启用后，由天气、导入日历、晚间和特殊日期触发当前角色的模型回复。每类滚动 24 小时最多两条，共享 45 分钟间隔，特殊日期优先。普通登录与随机动作独立运行，不进入聊天历史或记忆。详见 [0.4.0 说明](docs/companion-0.4.0.md)。
 
 0.3.0 已移除旧 DSH 的启动/停止、Web 面板、浏览器入口、任务状态通知与完成提示音，以及依赖 DSH 的 Telegram 远程通道。旧命令行开关不再提供功能。桌宠沿用原应用标识和数据目录，保留设置、Mod、备忘录、提醒及艾玛 AI 数据，无需迁移或重置。历史设计文档仅记录当时的实现，以当前源码与[更新日志](CHANGELOG.md)为准。
 
@@ -87,7 +92,7 @@ Ema 模型下方显示独立输入框。移动、缩放或切换显示器 DPI �
 
 需要 Windows 10/11 x64、可用的 Microsoft Edge WebView2 Runtime，以及包含 Ema Mod 的完整程序目录。源码不包含个人 API 密钥，也不附带 Hindsight 服务；没有配置 AI 时仍可使用原桌宠。
 
-如果本 fork 的 Releases 中尚无对应 AI 版本，请从源码构建。上游原版下载不包含本 fork 的新增 AI 功能；本机 `release/` 测试包不作为源码提交。
+从本 fork 的 [Releases](https://github.com/ayasesakurashin-dotcom/TrayBuddy/releases) 下载当前用户安装包或完整便携 ZIP。上游原版下载不包含本 fork 的新增 AI 功能。
 
 ### 配置对话
 
@@ -115,6 +120,7 @@ Ema 模型下方显示独立输入框。移动、缩放或切换显示器 DPI �
 ```text
 %APPDATA%\com.traybuddy.cafel\
 ├─ storage.json                 原桌宠设置与使用数据
+├─ care\                      本地日历、特殊日期与关怀记录
 └─ companion\
    ├─ identity.json             专用 bank ID 与所有权标记
    ├─ settings.json             独立 AI 设置，保留备份
@@ -164,6 +170,8 @@ pnpm tauri build
 
 NSIS 包通常输出到 `src-tauri/target/release/bundle/nsis/`，程序输出到 `src-tauri/target/release/traybuddy.exe`。完整程序需要配置、Mod、图标和辅助工具资源，不能只复制一个 EXE 就当作便携版。
 
+本 fork 的正式发布流程另有 `scripts/prepare-release.mjs`、`bundle-release.ps1` 和 `verify-release.mjs`：在干净的版本提交与对应标签上，先构建前端和带 `custom-protocol` 的 release 程序，再准备仅含受版本控制资源的便携包、生成当前用户安装包，最后逐文件校验两个成品。需要 7-Zip；记录和产物位于忽略的 `release/`。维护者明确要发布时，才执行 `publish-release.mjs upload` 与 `publish-release.mjs publish`，上传并核验全部附件后公开 Release；脚本使用本机 Git 凭据管理器，不在文件中保存密钥。
+
 普通 `.tbuddy` 构建不要求私有加密工具。需要 `.sbuddy` 时按原项目工具链单独准备 `sbuddy-crypto`；没有该可选工具仍允许编译。
 
 仅编译程序进行验证时，先构建前端并显式启用生产模式：
@@ -195,7 +203,7 @@ Windows 脚本为 lib 测试程序补齐 Common Controls v6 manifest，处理原
 
 ## 验证状态与限制
 
-- 0.3.1 本次验证范围与结果见[交互优化记录](docs/companion-interaction-fix-2026-10-21.md)。下列测试数字为此前版本记录。
+- 0.4.0：前端 821 项、后端 677 项通过，1 项可选真实记忆测试忽略。完整验证范围见 [0.4.0 说明](docs/companion-0.4.0.md)。下列旧版本数字仅保留为历史记录。
 - 0.3.0 解耦回归：前端全量 739 项、后端全量 580 项通过；真实 Hindsight 测试按原约定忽略。完整范围与限制见[解耦记录](docs/dsh-removal-2026-10-20.md)。
 - 2026-10-18，用户反馈当前版本实测正常。
 - 后续定时观察修复：解决共享设置锁与同步界面查询之间的死锁，15 项后端测试通过，并验证旧锁作用域在同一回归下失败、新作用域通过。参见[定位记录](docs/observation-hang-fix-2026-10-18.md)。
@@ -225,6 +233,8 @@ Windows 脚本为 lib 测试程序补齐 Common Controls v6 manifest，处理原
 src-tauri/src/modules/companion/       对话、记忆、语音、截图、人格、输入窗口
 src-tauri/src/commands/companion_commands.rs  AI 命令边界
 src-tauri/src/package_check.rs        内置页面成品检查
+src-tauri/src/modules/environment_service/  共享定位与天气事实
+src-tauri/src/modules/care/            日历、特殊日期、候选与频率管理
 src/lib/companion/                    前端消息呈现与类型
 src/lib/components/CompanionSettings.svelte  AI 设置页
 src/routes/companion_input/           输入、展开和收起

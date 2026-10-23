@@ -6,6 +6,17 @@ import { bubbleStyle, defaultStyle } from "$lib/bubble/bubbleStyle";
 import { resetBubbleStyle as resetStyle } from "./test-utils";
 
 describe("Bubble", () => {
+  it('leaves managed reply pages visible until their presenter replaces or hides them', async () => {
+    vi.useFakeTimers();resetStyle();
+    const close=vi.fn(),complete=vi.fn();
+    const {container}=render(Bubble,{props:{text:'由分页器控制的气泡。',plainText:true,typeSpeed:16,duration:4000,autoClose:false},events:{close,textComplete:complete}});
+    await vi.advanceTimersByTimeAsync(500);
+    expect(complete).toHaveBeenCalledOnce();
+    await vi.advanceTimersByTimeAsync(5000);
+    expect(close).not.toHaveBeenCalled();
+    expect(container.querySelector('.typewriter-text')?.textContent).toBe('由分页器控制的气泡。');
+    vi.useRealTimers();
+  });
   it('keeps a companion page for the full reading time after click-to-finish', async () => {
     vi.useFakeTimers();
     resetStyle();

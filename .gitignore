@@ -28,6 +28,8 @@ vite.config.ts.timestamp-*
 *.log
 *.txt
 !src-tauri/src/modules/companion/persona.txt
+!src-tauri/src/modules/companion/search_router.txt
+!src-tauri/src/modules/companion/search_answer.txt
 !check-tool/bundle_analyzer/使用说明.txt
 !check-tool/memory_profile/使用说明.txt
 
@@ -48,3 +50,5 @@ mod-tool/sbuddy-crypto.exe
 /companion/
 /storage.json
 /docs/traybuddy-userdata-loss-2026-10-09.md
+/docs/evidence/
+!docs/fixtures/hko-*.txt

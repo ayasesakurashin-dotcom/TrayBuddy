@@ -509,18 +509,13 @@ pub struct EnvironmentUpdateEvent {
 
 /// 获取缓存的地理位置（无需创建 EnvironmentManager）
 pub fn get_cached_location() -> Option<GeoLocation> {
-    CACHED_LOCATION
-        .get()
-        .and_then(|cache| cache.lock().ok())
-        .and_then(|guard| guard.clone())
+    super::environment_service::global().and_then(|service| service.legacy_location())
 }
 
 /// 获取缓存的天气（无需创建 EnvironmentManager）
 pub fn get_cached_weather() -> Option<WeatherInfo> {
-    CACHED_WEATHER
-        .get()
-        .and_then(|cache| cache.lock().ok())
-        .and_then(|guard| guard.weather.clone())
+    // Compatibility reads always revalidate; diagnostic callers use snapshots.
+    super::environment_service::global().and_then(|service| service.current_weather())
 }
 
 // ========================================================================= //

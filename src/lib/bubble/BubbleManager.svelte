@@ -44,6 +44,8 @@
     plainText?: boolean;
     /** Called after the complete text has appeared, so readers receive a full dwell time. */
     onTextComplete?: () => void;
+    /** A paginated presenter owns the dwell timer and dismissal. */
+    autoClose?: boolean;
   }
   
   // 重新导出 BranchInfo 保持向后兼容
@@ -161,7 +163,9 @@
   /**
    * 处理气泡关闭
    */
-  function handleClose() {
+  function handleClose(config: BubbleConfig) {
+    // A delayed close from an outgoing page cannot dismiss its replacement.
+    if (currentConfig !== config) return;
     isVisible = false;
     currentConfig = null;
     dispatch('close');
@@ -170,16 +174,18 @@
 
 {#if styleReady && isVisible && currentConfig}
   {#key currentConfig}
+  {@const config = currentConfig}
   <Bubble
-    text={currentConfig.text}
-    branches={currentConfig.branches || []}
-    duration={currentConfig.duration ?? 0}
-    position={currentConfig.position || 'top'}
-    typeSpeed={currentConfig.typeSpeed ?? 50}
-    plainText={currentConfig.plainText ?? false}
-    on:textComplete={() => currentConfig?.onTextComplete?.()}
+    text={config.text}
+    branches={config.branches || []}
+    duration={config.duration ?? 0}
+    position={config.position || 'top'}
+    typeSpeed={config.typeSpeed ?? 50}
+    plainText={config.plainText ?? false}
+    autoClose={config.autoClose ?? true}
+    on:textComplete={() => { if (currentConfig === config) config.onTextComplete?.(); }}
     on:branchSelect={handleBranchSelect}
-    on:close={handleClose}
+    on:close={() => handleClose(config)}
   />
   {/key}
 {/if}

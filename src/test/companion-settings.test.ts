@@ -66,4 +66,35 @@ describe('companion settings boundaries', () => {
     expect(mocks.invoke.mock.calls.some(call => call[0] === 'companion_save')).toBe(false);
     expect(page.getByRole('status').textContent).toContain('非负整数');
   });
+  it('defaults search on and keeps chat and vision thinking independent', async () => {
+    const page=render(CompanionSettings);await flushAsync();
+    expect((page.getByLabelText('允许按需网页搜索') as HTMLInputElement).checked).toBe(true);
+    expect((page.getByLabelText('对话模型思考强度') as HTMLSelectElement).value).toBe('off');
+    expect((page.getByLabelText('识图模型思考强度') as HTMLSelectElement).value).toBe('off');
+    await fireEvent.change(page.getByLabelText('对话模型思考强度'),{target:{value:'high'}});
+    await fireEvent.change(page.getByLabelText('识图模型思考接口类型'),{target:{value:'deepseek'}});
+    await fireEvent.change(page.getByLabelText('识图模型思考强度'),{target:{value:'low'}});
+    await fireEvent.click(page.getByRole('button',{name:'保存艾玛 AI 设置'}));await flushAsync();
+    const settings=mocks.invoke.mock.calls.find(c=>c[0]==='companion_save')![1].settings;
+    expect(settings.chat.thinking).toBe('high');expect(settings.vision.thinking).toBe('low');expect(settings.web_search.enabled).toBe(true);
+  });
+  it('persists an explicit choice to disable search',async()=>{
+    const page=render(CompanionSettings);await flushAsync();await fireEvent.click(page.getByLabelText('允许按需网页搜索'));await fireEvent.click(page.getByRole('button',{name:'保存艾玛 AI 设置'}));await flushAsync();expect(mocks.invoke.mock.calls.find(c=>c[0]==='companion_save')![1].settings.web_search.enabled).toBe(false);
+  });
+  it('saves a different role persona and voice without overwriting the legacy voice configuration',async()=>{
+    mocks.invoke.mockImplementation(async(command:string,args?:any)=>command==='companion_get'?fixture():command==='companion_character_get'?{id:'other',display_name:'小白',persona:'活泼的桌面伙伴',voice_locale:'zh',voice_id:'voice-other'}:command==='companion_save'?{...fixture(),settings:args.settings}:[]);
+    const page=render(CompanionSettings);await flushAsync();expect(page.getByRole('button',{name:'保存小白 AI 设置'})).toBeTruthy();
+    await fireEvent.input(page.getByLabelText('当前角色声音 ID'),{target:{value:'new-voice'}});await fireEvent.click(page.getByRole('button',{name:'保存小白 AI 设置'}));await flushAsync();
+    const settings=mocks.invoke.mock.calls.find(c=>c[0]==='companion_save')![1].settings;expect(settings.characters.other).toMatchObject({persona:'活泼的桌面伙伴',voice_id:'new-voice',voice_locale:'zh'});expect(settings.voice_id).toBe('');
+  });
+  it('persists Japanese reading independently of a persona that requests Chinese replies',async()=>{
+    mocks.invoke.mockImplementation(async(command:string,args?:any)=>command==='companion_get'?fixture():command==='companion_character_get'?{id:'ema',display_name:'艾玛',persona:'自然地用简体中文回复。',voice_locale:'zh',voice_id:'voice-ema'}:command==='companion_save'?{...fixture(),settings:args.settings}:[]);
+    const page=render(CompanionSettings);await flushAsync();
+    await fireEvent.change(page.getByLabelText('当前角色朗读语言'),{target:{value:'ja'}});
+    await fireEvent.click(page.getByRole('button',{name:'保存艾玛 AI 设置'}));await flushAsync();
+    const settings=mocks.invoke.mock.calls.find(c=>c[0]==='companion_save')![1].settings;
+    expect(settings.characters.ema).toMatchObject({persona:'自然地用简体中文回复。',voice_locale:'ja'});
+    expect((page.getByLabelText('当前角色朗读语言') as HTMLSelectElement).value).toBe('ja');
+  });
+
 });

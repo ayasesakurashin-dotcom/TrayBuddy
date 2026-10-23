@@ -5,6 +5,36 @@ use std::{
     path::{Path, PathBuf},
 };
 
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ThinkingLevel {
+    #[default]
+    Off,
+    Low,
+    High,
+    Max,
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ThinkingFormat {
+    #[default]
+    Auto,
+    Deepseek,
+    ReasoningEffort,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct WebSearchSettings {
+    pub enabled: bool,
+}
+impl Default for WebSearchSettings {
+    fn default() -> Self {
+        Self { enabled: true }
+    }
+}
+
 #[derive(Clone, Default, Serialize, Deserialize)]
 #[serde(default, deny_unknown_fields)]
 pub struct Endpoint {
@@ -13,17 +43,21 @@ pub struct Endpoint {
     #[serde(skip_serializing)]
     pub api_key: String,
     pub has_key: bool,
+    pub thinking: ThinkingLevel,
+    pub thinking_format: ThinkingFormat,
 }
 
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(default, deny_unknown_fields)]
 pub struct Settings {
+    pub characters: std::collections::HashMap<String, super::character::RoleSettings>,
     pub schema_version: u32,
     pub input_enabled: bool,
     pub input_collapsed: bool,
     pub speech_enabled: bool,
     pub observation_enabled: bool,
     pub memory_enabled: bool,
+    pub web_search: WebSearchSettings,
     pub chat: Endpoint,
     pub vision: Endpoint,
     pub speech: Endpoint,
@@ -41,12 +75,14 @@ pub struct Settings {
 impl Default for Settings {
     fn default() -> Self {
         Self {
-            schema_version: 1,
+            schema_version: 2,
+            characters: Default::default(),
             input_enabled: true,
             input_collapsed: false,
             speech_enabled: true,
             observation_enabled: false,
             memory_enabled: true,
+            web_search: WebSearchSettings::default(),
             chat: Endpoint {
                 base_url: "https://api.deepseek.com".into(),
                 model: "deepseek-flash".into(),
@@ -99,9 +135,10 @@ pub fn validate_url(value: &str, local_only: bool) -> Result<(), String> {
 
 impl Settings {
     pub fn validate(&self) -> Result<(), String> {
-        if self.schema_version != 1 {
+        if self.schema_version != 2 {
             return Err("不支持的 AI 设置版本，原文件已保留".into());
         }
+        if self.characters.len()>100 || self.characters.iter().any(|(id,p)| id.is_empty() || id.len()>100 || p.persona.chars().count()>12000 || p.display_name.chars().count()>80 || p.voice_id.len()>500 || !matches!(p.voice_locale.as_str(), "ja"|"jp"|"zh"|"en"|"original")) { return Err("角色人格或语音设置无效".into()); }
         for endpoint in [&self.chat, &self.vision, &self.speech] {
             if !endpoint.base_url.is_empty() {
                 validate_url(&endpoint.base_url, false)?;
@@ -151,9 +188,47 @@ pub fn load_settings(dir: &Path) -> Result<Settings, String> {
     if !path.exists() {
         return Ok(Settings::default());
     }
-    let value: Settings = serde_json::from_slice(&fs::read(path).map_err(|e| e.to_string())?)
+    let original = fs::read(&path).map_err(|e| e.to_string())?;
+    let mut raw: serde_json::Value = serde_json::from_slice(&original)
+        .map_err(|_| "AI 设置损坏，已停止加载并保留原文件；请从备份恢复".to_string())?;
+    let version = match raw.get("schema_version") {
+        None => 1,
+        Some(value) => value.as_u64().ok_or("AI 设置版本格式无效，原文件已保留")?,
+    };
+    if !matches!(version, 1 | 2) {
+        return Err("不支持的 AI 设置版本，原文件已保留".into());
+    }
+    if version == 1 {
+        let object = raw.as_object_mut().ok_or("AI 设置格式无效，原文件已保留")?;
+        object.insert("schema_version".into(), serde_json::json!(2));
+        // An old v1 file cannot already contain this v2-only field.
+        if object.contains_key("web_search") {
+            return Err("旧版 AI 设置包含未知字段，原文件已保留".into());
+        }
+        object.insert("web_search".into(), serde_json::json!({"enabled":true}));
+    }
+    let value: Settings = serde_json::from_value(raw)
         .map_err(|_| "AI 设置损坏，已停止加载并保留原文件；请从备份恢复".to_string())?;
     value.validate()?;
+    if version == 1 {
+        let backup = dir.join(format!(
+            "settings.pre-web-search-v1.{}.{}.json",
+            chrono::Utc::now().format("%Y%m%dT%H%M%S%.3fZ"),
+            random_id()?
+        ));
+        let mut file = fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(backup)
+            .map_err(|_| "迁移备份失败，原设置已保留".to_string())?;
+        file.write_all(&original)
+            .and_then(|_| file.sync_all())
+            .map_err(|_| "迁移备份失败，原设置已保留".to_string())?;
+        atomic_write(
+            &path,
+            &serde_json::to_vec_pretty(&value).map_err(|e| e.to_string())?,
+        )?;
+    }
     Ok(value)
 }
 
@@ -312,6 +387,88 @@ fn protect(_: &[u8], _: bool) -> Result<Vec<u8>, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn v1_migration_is_backed_up_preserves_identity_and_enables_search() {
+        let dir = tempfile::tempdir().unwrap();
+        let original = br#"{"schema_version":1,"nickname":"friend","reply_max_chars":123,"chat":{"base_url":"https://api.deepseek.com","model":"deepseek-flash"}}"#;
+        fs::write(dir.path().join("settings.json"), original).unwrap();
+        fs::write(dir.path().join("chat.key"), b"opaque-encrypted-bytes").unwrap();
+        fs::write(dir.path().join("identity.json"), b"identity-kept-verbatim").unwrap();
+        let value = load_settings(dir.path()).unwrap();
+        assert_eq!(value.schema_version, 2);
+        assert!(value.web_search.enabled);
+        assert_eq!(value.nickname, "friend");
+        assert_eq!(value.reply_max_chars, 123);
+        assert_eq!(value.chat.thinking, ThinkingLevel::Off);
+        assert_eq!(value.vision.thinking, ThinkingLevel::Off);
+        assert_eq!(
+            fs::read(dir.path().join("chat.key")).unwrap(),
+            b"opaque-encrypted-bytes"
+        );
+        assert_eq!(
+            fs::read(dir.path().join("identity.json")).unwrap(),
+            b"identity-kept-verbatim"
+        );
+        let backups: Vec<_> = fs::read_dir(dir.path())
+            .unwrap()
+            .filter_map(Result::ok)
+            .filter(|entry| {
+                entry
+                    .file_name()
+                    .to_string_lossy()
+                    .starts_with("settings.pre-web-search-v1.")
+            })
+            .collect();
+        assert_eq!(backups.len(), 1);
+        assert_eq!(fs::read(backups[0].path()).unwrap(), original);
+        load_settings(dir.path()).unwrap();
+        assert_eq!(
+            fs::read_dir(dir.path())
+                .unwrap()
+                .filter_map(Result::ok)
+                .filter(|entry| entry
+                    .file_name()
+                    .to_string_lossy()
+                    .starts_with("settings.pre-web-search-v1."))
+                .count(),
+            1
+        );
+    }
+    #[test]
+    fn v2_preserves_user_search_and_independent_thinking_preferences() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut settings = Settings::default();
+        settings.web_search.enabled = false;
+        settings.chat.thinking = ThinkingLevel::High;
+        settings.vision.thinking = ThinkingLevel::Low;
+        settings.vision.thinking_format = ThinkingFormat::Deepseek;
+        fs::write(
+            dir.path().join("settings.json"),
+            serde_json::to_vec(&settings).unwrap(),
+        )
+        .unwrap();
+        let loaded = load_settings(dir.path()).unwrap();
+        assert!(!loaded.web_search.enabled);
+        assert_eq!(loaded.chat.thinking, ThinkingLevel::High);
+        assert_eq!(loaded.vision.thinking, ThinkingLevel::Low);
+        assert_eq!(loaded.vision.thinking_format, ThinkingFormat::Deepseek);
+    }
+    #[test]
+    fn future_or_malformed_settings_version_is_never_migrated() {
+        let dir = tempfile::tempdir().unwrap();
+        for source in [
+            r#"{"schema_version":99}"#,
+            r#"{"schema_version":"1"}"#,
+            r#"{"schema_version":1,"unknown":true}"#,
+        ] {
+            fs::write(dir.path().join("settings.json"), source).unwrap();
+            assert!(load_settings(dir.path()).is_err());
+            assert_eq!(
+                fs::read_to_string(dir.path().join("settings.json")).unwrap(),
+                source
+            );
+        }
+    }
     #[test]
     fn reply_length_is_unlimited_by_default_and_accepts_user_limits() {
         let mut value = Settings::default();

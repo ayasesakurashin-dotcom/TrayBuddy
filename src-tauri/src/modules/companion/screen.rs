@@ -1,5 +1,11 @@
+#[path = "screen_targets.rs"]
+mod targets;
 use super::settings::Settings;
 use std::sync::Mutex;
+pub use targets::{
+    capture_target, consume_target, invalidate_targets, prepare_target, start_tracking,
+    stop_tracking, validate_target,
+};
 static LAST_EXTERNAL: Mutex<Option<(isize, String, std::time::Instant)>> = Mutex::new(None);
 
 #[cfg(windows)]
@@ -107,6 +113,16 @@ pub fn capture(settings: &Settings, app: &tauri::AppHandle) -> Result<(String, V
         }
         (title, rect)
     };
+    capture_rect(title, rect, app)
+}
+
+#[cfg(windows)]
+fn capture_rect(
+    title: String,
+    rect: windows::Win32::Foundation::RECT,
+    app: &tauri::AppHandle,
+) -> Result<(String, Vec<u8>), String> {
+    use tauri::Manager;
     let w = rect.right - rect.left;
     let h = rect.bottom - rect.top;
     if w <= 0 || h <= 0 || w > 16384 || h > 16384 {

@@ -169,7 +169,9 @@ impl TriggerManager {
                     .get_state_by_name(&name)
                     .cloned()
                     .and_then(|st| {
-                        if st.is_enable() && limits_ctx.is_allowed(&st) {
+                        let mod_id=resource_manager.current_mod.as_ref().map(|m|m.manifest.id.as_ref()).unwrap_or("");
+                        if st.is_enable() && limits_ctx.is_allowed(&st)
+                            && crate::modules::care::profile::allows_preset(mod_id,&st) {
                             Some((st, w))
                         } else {
                             None
@@ -393,6 +395,26 @@ mod tests {
         let ctx = StateLimitsContext::default_unlimited();
         let result = TriggerManager::trigger_event("nonexistent", false, &rm, &mut sm, &ctx);
         assert_eq!(result, Ok(false));
+    }
+    #[test]
+    fn night_login_greeting_stays_native_for_legacy_character() {
+        let mut rm=build_rm_for_trigger(vec![("idle",true),("night",false)],vec![("login",vec![("idle",vec![("night",1)],true)])]);
+        std::sync::Arc::make_mut(rm.current_mod.as_mut().unwrap()).manifest.id="ema".into();
+        let mut sm=StateManager::new();
+        sm.set_persistent_state(rm.get_state_by_name("idle").unwrap().clone(),false,&rm).unwrap();
+        assert_eq!(TriggerManager::trigger_event("login",false,&rm,&mut sm,&StateLimitsContext::default_unlimited()),Ok(true));
+        assert_eq!(sm.get_current_state().unwrap().name.as_ref(),"night");
+    }
+    #[test]
+    fn random_event_excludes_taken_over_care_before_weighted_choice() {
+        let mut rm=build_rm_for_trigger(vec![("idle",true),("rain",false),("random1_1",false)],vec![("right_click",vec![("idle",vec![("rain",10000),("random1_1",1)],true)])]);
+        std::sync::Arc::make_mut(rm.current_mod.as_mut().unwrap()).manifest.id="ema".into();
+        for _ in 0..10 {
+            let mut sm=StateManager::new();
+            sm.set_persistent_state(rm.get_state_by_name("idle").unwrap().clone(),false,&rm).unwrap();
+            assert_eq!(TriggerManager::trigger_event("right_click",false,&rm,&mut sm,&StateLimitsContext::default_unlimited()),Ok(true));
+            assert_eq!(sm.get_current_state().unwrap().name.as_ref(),"random1_1");
+        }
     }
 
     #[test]

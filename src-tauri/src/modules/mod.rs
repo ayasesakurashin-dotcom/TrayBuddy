@@ -14,8 +14,10 @@
 
 pub mod ai_tool_manager;
 pub mod companion;
+pub mod care;
 pub mod constants;
 pub mod environment;
+pub mod environment_service;
 pub mod event_manager;
 pub mod media_observer;
 pub mod mod_archive;

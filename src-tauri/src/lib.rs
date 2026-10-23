@@ -59,7 +59,7 @@ use modules::constants::{
 use modules::event_manager::{emit, emit_from_tauri_window, emit_from_window, emit_settings, events};
 use modules::environment::{
     get_cached_location, get_cached_weather, get_current_datetime, get_current_season,
-    get_time_period, init_environment, DateTimeInfo, EnvironmentManager, GeoLocation, WeatherInfo,
+    get_time_period, DateTimeInfo, EnvironmentManager, GeoLocation, WeatherInfo,
 };
 use modules::media_observer::{
     get_cached_debug_info, MediaDebugInfo, MediaObserver, MediaPlaybackStatus,
@@ -461,6 +461,11 @@ pub fn run() {
             };
 
             // ========== 注册全局状态（必须在创建窗口之前） ==========
+            let application_config_dir=app.path().app_config_dir()?;
+            let environment=Arc::new(modules::environment_service::EnvironmentService::new(application_config_dir.join("environment")));
+            let care=Arc::new(modules::care::CareService::new(application_config_dir.join("care")));
+            app.manage(environment.clone());
+            app.manage(care.clone());
             app.manage(AppState {
                 resource_manager: rm,
                 state_manager: Mutex::new(sm),
@@ -475,6 +480,8 @@ pub fn run() {
 
             let companion_dir = app.path().app_config_dir()?.join("companion");
             app.manage(modules::companion::Companion::new(companion_dir).unwrap_or_else(modules::companion::Companion::unavailable));
+            modules::environment_service::EnvironmentService::start(environment,app.handle().clone());
+            modules::care::CareService::start(care,app.handle().clone());
 
             // ========== 监听设置变更以实时刷新托盘菜单 ==========
             {
@@ -534,13 +541,7 @@ pub fn run() {
 
             modules::companion::start(app.handle().clone());
 
-            // 在后台线程初始化环境信息（地理位置和天气）
-            let app_handle_env = app.handle().clone();
-            let _ = std::thread::Builder::new()
-                .name("traybuddy-env".to_string())
-                .spawn(move || {
-                    init_environment(Some(app_handle_env));
-                });
+            // Environment/care services own their independent refresh lifecycle.
 
             // 冷启动：如果是通过双击 .tbuddy/.sbuddy 启动，自动拉起 Mods 并导入
             let cli_args: Vec<String> = std::env::args().skip(1).collect();
@@ -689,6 +690,27 @@ pub fn run() {
             get_season_info,
             get_time_period_info,
             get_weather_info,
+            environment_get_snapshot,
+            environment_search_cities,
+            environment_save_settings,
+            environment_refresh_weather,
+            environment_refresh_location,
+            environment_request_location_access,
+            environment_confirm_ip_city,
+            care_get_status,
+            care_save_settings,
+            care_interaction_activity,
+            care_validate_offer,
+            care_presented,
+            care_rejected,
+            care_finished,
+            care_audio_allowed,
+            care_calendar_get,
+            care_calendar_import,
+            care_calendar_remove,
+            care_special_save,
+            care_special_delete,
+            companion_character_get,
             // 媒体/进程调试
             get_media_debug_info,
             get_process_debug_info,
@@ -707,6 +729,13 @@ pub fn run() {
             start_login_detection,
             // 艾玛独立 AI
             companion_get,
+            companion_set_input_layout,
+            companion_prepare_screen,
+            companion_request_receipt,
+            companion_get_observations,
+            companion_open_source,
+            companion_forget_observation_preview,
+            companion_forget_observation,
             companion_set_input_collapsed,
             companion_save,
             companion_send,
@@ -724,8 +753,15 @@ pub fn run() {
             companion_voice_create,
             companion_speech_preview,
         ])
-        .run(context)
-        .expect("error while running tauri application");
+        .build(context)
+        .expect("error while building tauri application")
+        .run(|app,event|{
+            if matches!(event,tauri::RunEvent::Exit){
+                if let Some(service)=app.try_state::<Arc<modules::environment_service::EnvironmentService>>(){service.stop();}
+                if let Some(service)=app.try_state::<Arc<modules::care::CareService>>(){service.stop();}
+                modules::companion::shutdown(app);
+            }
+        });
 }
 
 

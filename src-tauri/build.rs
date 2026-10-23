@@ -50,7 +50,6 @@ fn main() {
 
     tauri_build::build();
 
-
     // 为测试嵌入 Windows Application Manifest（声明 Common Controls v6 依赖）
     //
     // tauri_build 通过 `cargo:rustc-link-arg-bins` 仅为 bin 目标嵌入包含

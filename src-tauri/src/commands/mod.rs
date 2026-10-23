@@ -26,6 +26,9 @@ use crate::modules::environment::{
     get_time_period, DateTimeInfo, EnvironmentManager, GeoLocation, WeatherInfo,
 };
 use crate::modules::event_manager::{emit, events};
+pub use crate::modules::environment_service::commands::*;
+pub use crate::modules::care::{care_get_status,care_save_settings,care_interaction_activity,care_validate_offer,care_presented,care_rejected,care_finished,care_calendar_get,care_calendar_import,care_calendar_remove,care_special_save,care_special_delete,care_audio_allowed};
+pub use crate::modules::companion::proactive::companion_character_get;
 use crate::modules::media_observer::{get_cached_debug_info, MediaDebugInfo};
 use crate::modules::process_observer::{get_cached_process_debug_info, ProcessDebugInfo};
 use crate::modules::render_tuning_config::{self, RenderTuningConfig};
@@ -578,9 +581,9 @@ pub async fn get_location_info() -> Option<GeoLocation> {
 
 /// 刷新地理位置信息（强制重新从 API 获取）
 #[tauri::command]
-pub async fn refresh_location_info() -> Option<GeoLocation> {
-    let mut manager = EnvironmentManager::new();
-    manager.refresh_location().await
+pub async fn refresh_location_info(app:tauri::AppHandle,window:tauri::WebviewWindow) -> Result<Option<GeoLocation>,String> {
+    environment_refresh_location(app,window).await?;
+    Ok(get_cached_location())
 }
 
 /// 获取当前季节

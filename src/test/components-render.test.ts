@@ -853,13 +853,12 @@ describe("EnvironmentDebugger", () => {
 
   it("renders with environment data", async () => {
     const { container } = render(EnvironmentDebugger);
-    await flushAsync();
-    await vi.advanceTimersByTimeAsync(100);
-    await flushAsync();
-
-    expect(container.querySelector(".env-debugger")).toBeTruthy();
-    // datetime section should exist with the mocked data
-    expect(container.querySelector(".datetime-section")).toBeTruthy();
+    // The mock snapshot lazily imports its fixture. Wait for the data rather
+    // than assuming module loading completes in 100 ms under parallel tests.
+    await vi.waitFor(() => {
+      expect(container.querySelector(".env-debugger")).toBeTruthy();
+      expect(container.querySelector(".datetime-section")).toBeTruthy();
+    }, {timeout: 3000});
   });
 
   it("refresh button reloads data", async () => {
