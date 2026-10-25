@@ -28,10 +28,11 @@ pub enum ThinkingFormat {
 #[serde(default, deny_unknown_fields)]
 pub struct WebSearchSettings {
     pub enabled: bool,
+    pub search_when_uncertain: bool,
 }
 impl Default for WebSearchSettings {
     fn default() -> Self {
-        Self { enabled: true }
+        Self { enabled: true, search_when_uncertain: false }
     }
 }
 
@@ -439,6 +440,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let mut settings = Settings::default();
         settings.web_search.enabled = false;
+        settings.web_search.search_when_uncertain = true;
         settings.chat.thinking = ThinkingLevel::High;
         settings.vision.thinking = ThinkingLevel::Low;
         settings.vision.thinking_format = ThinkingFormat::Deepseek;
@@ -449,9 +451,17 @@ mod tests {
         .unwrap();
         let loaded = load_settings(dir.path()).unwrap();
         assert!(!loaded.web_search.enabled);
+        assert!(loaded.web_search.search_when_uncertain);
         assert_eq!(loaded.chat.thinking, ThinkingLevel::High);
         assert_eq!(loaded.vision.thinking, ThinkingLevel::Low);
         assert_eq!(loaded.vision.thinking_format, ThinkingFormat::Deepseek);
+    }
+    #[test]
+    fn old_search_settings_keep_the_conservative_default() {
+        let old: WebSearchSettings = serde_json::from_str(r#"{"enabled":true}"#).unwrap();
+        assert!(old.enabled);
+        assert!(!old.search_when_uncertain);
+        assert!(!Settings::default().web_search.search_when_uncertain);
     }
     #[test]
     fn future_or_malformed_settings_version_is_never_migrated() {

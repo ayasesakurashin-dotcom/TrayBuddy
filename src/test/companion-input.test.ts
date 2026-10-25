@@ -18,7 +18,7 @@ let view: CompanionView;
 beforeEach(() => {
   cleanup(); localStorage.clear(); mocks.handlers.clear(); mocks.invoke.mockReset();
   const endpoint = { base_url: '', model: '', has_key: false };
-  view = { bank_id: 'ema-companion-test', status: '就绪', pending: 0, busy: false, summary: '', settings: {
+  view = { character_name: '艾玛', bank_id: 'ema-companion-test', status: '就绪', pending: 0, busy: false, summary: '', settings: {
     schema_version: 1, input_enabled: true, input_collapsed: false, speech_enabled: true, observation_enabled: false, memory_enabled: true,
     chat: { ...endpoint, has_key: true }, vision: { ...endpoint }, speech: { ...endpoint }, memory: { ...endpoint },
     voice_id: '', speech_speed: 1, observation_interval_secs: 300, capture_scope: 'foreground', capture_region: [0, 0, 800, 600],
@@ -34,6 +34,15 @@ beforeEach(() => {
 });
 
 describe('screen questions and request receipts', () => {
+  it('uses a generic fallback and refreshes the active role without losing the shared draft', async () => {
+    view.character_name = undefined;
+    localStorage.setItem('ema-companion-draft', '继续上次的话题');
+    const page = render(CompanionInput); await flushAsync();
+    expect(page.getByLabelText('给桌面伙伴的消息')).toBeTruthy();
+    view.character_name = '小白';
+    mocks.handlers.get('companion-settings-changed')?.({payload:{}}); await flushAsync();
+    expect((page.getByLabelText('给小白的消息') as HTMLTextAreaElement).value).toBe('继续上次的话题');
+  });
   const completed = {request:8,turn_id:'turn-8',result:'completed',text_committed:true,observation_ids:['observation-8'],history_epoch:0,replayed:false};
   it('keeps date receipts in the bottom-left status through reply and voice stages, then clears them on a new send', async () => {
     const page = render(CompanionInput); await flushAsync();

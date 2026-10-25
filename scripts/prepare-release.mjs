@@ -5,9 +5,9 @@ import crypto from 'node:crypto';
 import { spawnSync } from 'node:child_process';
 
 const root = path.resolve(import.meta.dirname, '..');
-const release = path.join(root, 'release');
 const version = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8')).version;
 if (!/^\d+\.\d+\.\d+$/.test(version)) throw new Error('Invalid release version.');
+const release = path.join(root, 'release', `v${version}`);
 const portableName = `ema-desktop-${version}`;
 const portable = path.join(release, portableName);
 const sevenZip = process.env.SEVEN_ZIP || 'C:/Program Files/7-Zip/7z.exe';
@@ -42,7 +42,7 @@ for (const entry of fs.readdirSync(modStaging, { withFileTypes: true })) {
   if (!entry.isDirectory() || !fs.existsSync(path.join(modStaging, entry.name, 'manifest.json'))) continue;
   run(sevenZip, ['a', '-tzip', '-mx=5', '-bso0', '-bsp0', path.join(portable, 'mods', `${entry.name}.tbuddy`), entry.name], modStaging);
 }
-for (const file of ['companion-0.4.0.md', 'companion-flexible-care-2026-10-23.md']) {
+for (const file of ['companion-0.4.0.md', 'companion-flexible-care-2026-10-23.md', 'companion-role-decoupling-2026-10-25.md', `releases/${version}.md`]) {
   copy(path.join(root, 'docs', file), path.join(portable, 'docs', file));
 }
 copy(path.join(root, 'README-EMA-AI.md'), path.join(portable, '使用说明.md'));
@@ -53,13 +53,13 @@ const check = JSON.parse(run('pwsh', ['-NoProfile', '-File', path.join(root, 'sc
 if (!check.ok || !check.production_mode) throw new Error('Production executable check failed.');
 fs.writeFileSync(path.join(portable, 'package-check.json'), JSON.stringify(check, null, 2) + '\n');
 const binaryHash = crypto.createHash('sha256').update(fs.readFileSync(path.join(portable, 'traybuddy.exe'))).digest('hex');
-const record = { Version: version, BuiltAt: new Date().toISOString(), BinarySha256: binaryHash, ProductionMode: true, ApplicationIdentifier: 'com.traybuddy.cafel', SourceHead: sourceCommit, SourceWorkingTreeChanges: false, BuildCommand: 'cargo build --release --features custom-protocol --manifest-path src-tauri/Cargo.toml --offline', FrontendCommand: 'pnpm build', UserData: 'not included' };
+const record = { Version: version, BuiltAt: new Date().toISOString(), BinarySha256: binaryHash, ProductionMode: true, ApplicationIdentifier: 'com.traybuddy.cafel', SourceHead: sourceCommit, SourceWorkingTreeChanges: false, BuildCommand: process.env.RELEASE_BUILD_COMMAND || 'cargo build --release --features custom-protocol --manifest-path src-tauri/Cargo.toml --offline', FrontendCommand: 'pnpm build', UserData: 'not included' };
 fs.writeFileSync(path.join(portable, 'build-info.json'), JSON.stringify(record, null, 2) + '\n');
 run(sevenZip, ['a', '-tzip', '-mx=5', '-bso0', '-bsp0', path.join(release, `${portableName}.zip`), portableName], release);
 
-const resources = Object.fromEntries([...resourceDirs, 'icons', 'docs'].map(directory => [`../release/${portableName}/${directory}`, directory]));
-for (const file of ['使用说明.md', 'CHANGELOG.md', 'package-check.json']) resources[`../release/${portableName}/${file}`] = file;
-resources[`../release/${portableName}-installer-build-info.json`] = 'build-info.json';
+const resources = Object.fromEntries([...resourceDirs, 'icons', 'docs'].map(directory => [`../release/v${version}/${portableName}/${directory}`, directory]));
+for (const file of ['使用说明.md', 'CHANGELOG.md', 'package-check.json']) resources[`../release/v${version}/${portableName}/${file}`] = file;
+resources[`../release/v${version}/${portableName}-installer-build-info.json`] = 'build-info.json';
 // bundle-release.ps1 replaces the default map; CLI overlays would merge it.
 fs.writeFileSync(path.join(release, `tauri.${version}.current-user.json`), JSON.stringify({ bundle: { resources, windows: { nsis: { installMode: 'currentUser' } } } }, null, 2) + '\n');
 console.log(JSON.stringify({ version, sourceCommit, portable, production: check.ok, binaryHash }));

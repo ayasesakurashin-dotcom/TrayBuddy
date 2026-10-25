@@ -4,21 +4,18 @@
   import { listen } from '@tauri-apps/api/event';
   import CompanionHistory from './CompanionHistory.svelte';
   import EnvironmentSettings from './EnvironmentSettings.svelte';
+  import CompanionVoiceLibrary from './CompanionVoiceLibrary.svelte';
   import type { CompanionView, CompanionSettings, Turn, Endpoint, RuntimeRole } from '$lib/companion/types';
   let view = $state<CompanionView | null>(null);
   let config = $state<CompanionSettings | null>(null);
   let message = $state('');
   let character=$state<RuntimeRole|null>(null);
-  const roleName=$derived(character?.display_name||view?.character_name||'艾玛');
   let working = $state(false);
   let history = $state<Turn[]>([]);
   let showHistory = $state(false);
   let confirmClear = $state(false);
   let showEnvironment = $state(false);
   let excluded = $state('');
-  let samples = $state<Array<{name: string; candidate_text: string}>>([]);
-  let selectedSamples = $state<string[]>([]);
-  let confirmVoiceUpload = $state(false);
   let previewAudio: HTMLAudioElement | null = null;
   const endpoints = [{ id: 'chat', title: '对话模型', hint: 'DeepSeek V4.1 Flash 使用 deepseek-flash' }, { id: 'vision', title: '识图模型', hint: '独立配置；需要支持图片输入' }, { id: 'speech', title: '生成语音', hint: 'Fish Audio · 跟随当前角色的朗读设置' }] as const;
   async function load() {
@@ -27,6 +24,7 @@
     const role=await invoke<RuntimeRole>('companion_character_get').catch(()=>null);
     character=role&&typeof role.id==='string'&&typeof role.persona==='string'&&typeof role.voice_locale==='string'?role:null;
     config.web_search ??= {enabled:true};
+    config.web_search.search_when_uncertain ??= false;
     for (const kind of ['chat','vision'] as const) {config[kind].thinking ??= 'off'; config[kind].thinking_format ??= 'auto';}
     excluded = config.excluded_windows.join('\n');
     for (const kind of ['chat', 'vision', 'speech', 'memory'] as const) config[kind].api_key = '';
@@ -64,12 +62,6 @@
     previewAudio?.pause(); previewAudio = new Audio(data); previewAudio.volume = settings.volume;
     await previewAudio.play(); return '正在试听';
   }
-  async function loadSamples() { samples = await invoke('companion_voice_samples'); return '可先试听，再选择清晰自然的语音片段'; }
-  async function createVoice() {
-    await persist();
-    const id = await invoke<string>('companion_voice_create', { names: $state.snapshot(selectedSamples) });
-    await load(); confirmVoiceUpload = false; return `私有声音已建立：${id}`;
-  }
   onMount(() => {
     let stopped = false; const cleanup: Array<() => void> = [];
     void load().catch(error => message = String(error));
@@ -81,7 +73,7 @@
 </script>
 
 <section class="companion-settings" aria-label="桌宠 AI 设置">
-  <header><span class="eyebrow">DESKTOP COMPANION</span><h2>和{roleName}一起，让日常多一点回应</h2><p>自然聊天、持续记忆，以及当前角色的声音。</p></header>
+  <header><span class="eyebrow">DESKTOP COMPANION</span><h2>桌宠 AI 设置</h2><p>所有角色共用 AI 功能与接口；人格、朗读语言和声音按角色保存。</p></header>
   {#if config && view}
     <div class="toggles">
       <label><input type="checkbox" bind:checked={config.input_enabled} />显示对话输入框</label>
@@ -89,19 +81,23 @@
       <label><input type="checkbox" bind:checked={config.observation_enabled} />定时屏幕观察</label>
     </div>
     <div class="fields two">
-      <label>希望{roleName}怎么称呼你<input bind:value={config.nickname} maxlength="40" placeholder="留空则自然称呼" /></label>
+      <label>希望桌宠怎么称呼你<input bind:value={config.nickname} maxlength="40" placeholder="留空则自然称呼" /></label>
       <label>回复字数上限<input type="number" bind:value={config.reply_max_chars} min="0" step="1" placeholder="0 表示不限制" /></label>
     </div>
     <p class="hint">0 表示不限制总字数，也可填写任意正整数设置上限。回复按语意分片，每片最多 80 字，完整显示后停留 4 秒。模型服务自身的输出容量仍适用。开关保存后生效，也可在右键菜单快速切换。</p>
     {#if character}<details><summary>当前角色人格与声音<span>{character.display_name} · {character.id}</span></summary>
       <div class="fields"><label>角色称呼<input bind:value={character.display_name} maxlength="80" /></label><label>人格提示词<textarea aria-label="当前角色人格提示词" bind:value={character.persona} rows="8" maxlength="12000"></textarea></label></div>
       <div class="fields two"><label>朗读语言<select aria-label="当前角色朗读语言" bind:value={character.voice_locale}><option value="original">跟随回复原文</option><option value="zh">中文</option><option value="ja">日语</option><option value="en">英语</option></select></label></div>
-      <p class="hint">按角色分别保存。聊天、屏幕观察与自动关怀共同使用这里的人格与声音配置；其他角色不会继承艾玛的人格或声音。修改后点击底部保存。</p>
+      <p class="hint">聊天、屏幕观察与自动关怀共同使用当前角色的人格与声音。切换桌宠时自动读取对应角色的配置，新角色使用通用默认人格。修改后点击底部保存。</p>
     </details>{/if}
     <details>
       <summary>网页搜索<span>默认开启 · 需要时查询</span></summary>
-      {#if config.web_search}<label class="check"><input type="checkbox" bind:checked={config.web_search.enabled} />允许按需网页搜索</label>{/if}
-      <p class="hint">仅在明确需要核查公开资料时搜索，判断不清时不搜索。首版使用官方 DeepSeek 对话配置；其他服务仍可正常聊天。搜索失败会在输入框状态区提示，提示不会进入回复气泡或语音。</p>
+      {#if config.web_search}
+        <label class="check"><input type="checkbox" bind:checked={config.web_search.enabled} />允许按需网页搜索</label>
+        <label class="check"><input type="checkbox" bind:checked={config.web_search.search_when_uncertain} disabled={!config.web_search.enabled} />无法判断时默认搜索</label>
+      {/if}
+      <p class="hint">默认只在明确需要核查公开资料时搜索。开启“无法判断时默认搜索”后，模型不确定是否需要搜索时也会尝试查询；无法提炼公开查询关键词时先询问。关闭网页搜索或本次明确要求不联网时，不会搜索。此偏好保存后生效。</p>
+      <p class="hint">首版使用官方 DeepSeek 对话配置；其他服务仍可正常聊天。搜索失败会在输入框状态区提示，提示不会进入回复气泡或语音。</p>
     </details>
     {#each endpoints as endpoint}
       <details open={endpoint.id === 'chat'}>
@@ -120,12 +116,9 @@
           <p class="hint">聊天与识图分别保存，默认关闭思考。自动识别仅向已适配模型发送参数；使用其他服务时，请根据服务文档选择兼容类型。模型可能不支持部分档位或关闭思考，此时需调整配置。搜索判断、后台摘要和语音翻译保持非思考。</p>
         {/if}
         {#if endpoint.id === 'speech'}
-          <div class="fields two">{#if character}<label>当前角色声音 ID<input aria-label="当前角色声音 ID" bind:value={character.voice_id} placeholder="reference_id；留空则只显示文字" /></label>{:else}<label>默认声音 ID<input bind:value={config.voice_id} placeholder="reference_id" /></label>{/if}<label>语速<input type="number" bind:value={config.speech_speed} step="0.05" min="0.6" max="1.5" /></label></div>
-          <p class="hint">使用当前角色的参考语音建立私有声音。气泡文本可能并非录音逐字稿，参考素材需先核对。</p>
-          <button disabled={working} onclick={() => action(loadSamples)}>选择当前角色预设声音素材</button>
+          <div class="fields two">{#if character}<label>当前角色声音 ID<input aria-label="当前角色声音 ID" bind:value={character.voice_id} placeholder="reference_id；留空则只显示文字" /></label>{/if}<label>语速<input type="number" bind:value={config.speech_speed} step="0.05" min="0.6" max="1.5" /></label></div>
           <button disabled={working} onclick={() => action(async () => { await persist(); return play(await invoke<string>('companion_speech_preview')); })}>试听合成声音</button>
-          {#if samples.length}<div class="samples">{#each samples as sample}<div class="sample"><label><input type="checkbox" bind:group={selectedSamples} value={sample.name} />{sample.name}</label><button disabled={working} onclick={() => action(async () => play(await invoke<string>('companion_voice_sample_audio', { name: sample.name })))}>试听原音</button></div>{/each}</div><p class="hint">选择 1—8 段。上传后使用服务端语音识别，不把气泡文本当作录音逐字稿。</p><button disabled={working || selectedSamples.length === 0 || selectedSamples.length > 8} onclick={() => confirmVoiceUpload = true}>用所选素材建立私有声音</button>{/if}
-          {#if confirmVoiceUpload}<div class="confirm"><p>将向已配置的 Fish Audio 服务上传 {selectedSamples.length} 段所选角色语音素材，建立私有声音。</p><button disabled={working} onclick={() => action(createVoice)}>上传并创建私有声音</button><button onclick={() => confirmVoiceUpload = false}>取消</button></div>{/if}
+          {#if character}<CompanionVoiceLibrary role={character} serviceUrl={config.speech.base_url} {working} run={action} prepareUpload={persist} afterUpload={load} {play} report={value => message = value} />{:else}<p class="hint">角色配置未加载，请重新打开设置后管理声音素材。</p>{/if}
         {/if}
         <button disabled={working} onclick={() => action(() => test(endpoint.id))}>保存并测试连接</button>
       </details>
@@ -136,6 +129,7 @@
       <div class="fields"><label>本机 Hindsight 地址<input bind:value={config.memory.base_url} /></label><label>鉴权密钥（如有）<input type="password" bind:value={config.memory.api_key} placeholder="留空保持原密钥" autocomplete="new-password" /></label></div>
       <p class="bank"><strong>桌宠专用 bank（只读）</strong><code>{view.bank_id}</code></p>
       <p class="hint">由本机身份自动生成并验证所有权，不能填入编程助手或其他工作区的 bank。长期记忆待同步：{view.pending} 条。聊天原文保存在本机；当前 Hindsight 的记忆抽取会调用其配置的模型 API。</p>
+      <p class="hint">当前所有桌宠角色共用同一记忆 bank 和连续对话历史；切换角色会保留已有记忆与会话。</p>
       <button disabled={working} onclick={() => action(() => test('memory'))}>保存并检查记忆连接</button>
       <button disabled={working} onclick={() => action(recent)}>查看最近记录</button>
       <button disabled={working} onclick={() => action(exportHistory)}>导出全部记录</button>
@@ -154,8 +148,7 @@
       <p class="hint">开启后会把选定范围的截图发送给你配置的识图 API，原图不落盘。锁屏、免打扰和无效画面会跳过；对话进行时延后。观察摘要与对话使用同一专用 bank。</p>
       <button disabled={working} onclick={() => action(async () => { await persist(); await invoke('companion_observe'); return '已完成本次观察'; })}>保存并立即观察一次</button>
     </details>
-    {#if !character||character.id==='ema'}<details><summary>艾玛的人格<span>完整背景 · 温柔明朗</span></summary><p class="hint">开朗、体贴，怕寂寞，也害怕被讨厌；有自己的判断，愿意认真帮助你。允许讨论完整剧情，区分各条路线。日语自称「ボク」，通过共同记忆逐渐熟悉你。</p></details>{/if}
-    <footer><button class="primary" disabled={working} onclick={() => action(async () => { await persist(); return `${roleName} AI 设置已保存`; })}>{working ? '处理中…' : `保存${roleName} AI 设置`}</button><button onclick={() => action(() => invoke('companion_stop'))}>停止当前回复和语音</button><p role="status">{message || view.status}</p></footer>
+    <footer><button class="primary" disabled={working} onclick={() => action(async () => { await persist(); return '桌宠 AI 设置已保存'; })}>{working ? '处理中…' : '保存桌宠 AI 设置'}</button><button onclick={() => action(() => invoke('companion_stop'))}>停止当前回复和语音</button><p role="status">{message || view.status}</p></footer>
     <details ontoggle={(event) => { if ((event.currentTarget as HTMLDetailsElement).open) showEnvironment = true; }}><summary>环境与自动关怀<span>地点 · 天气 · 提醒</span></summary>{#if showEnvironment}<EnvironmentSettings />{/if}</details>
     {#if showHistory}<CompanionHistory turns={history} {working} onForget={(id) => void action(() => forget(id))} onChanged={() => void recent()} /><button onclick={() => showHistory = false}>收起记录</button>{/if}
   {:else}<p role="status">{message || '正在读取桌宠 AI 设置…'}</p>{/if}
@@ -173,7 +166,6 @@
   button { margin: 5px 7px 3px 0; padding: 8px 12px; border: 1px solid #d5c6cd; border-radius: 6px; color: inherit; background: transparent; font-size: 12px; cursor: pointer; } button:disabled { opacity: .5; cursor: default; } .primary { background: #854b60; color: white; border-color: #854b60; } .danger { color: #a63c43; }
   footer { padding-top: 20px; } footer p { line-height: 1.6; font-size: 12px; color: #806770; } .bank { padding: 12px; background: #f4edef; font-size: 11px; overflow-wrap: anywhere; } code { display: block; margin-top: 8px; } .region { display: grid; grid-template-columns: repeat(4,1fr); gap: 8px; font-size: 12px; } .confirm { border-left: 2px solid #a63c43; padding: 1px 12px 10px; font-size: 12px; }
 
-  .samples { max-height: 230px; overflow-y: auto; margin: 12px 0; border: 1px solid #dcd0d5; padding: 8px; border-radius: 6px; } .sample { display: flex; align-items: center; justify-content: space-between; font-size: 12px; } .sample label { display: flex; gap: 6px; align-items: center; }
   @media (max-width: 540px) { .companion-settings { padding: 18px; } .two { grid-template-columns: 1fr; } summary span { float: none; display: block; margin: 7px 0 0 16px; } }
   @media (prefers-color-scheme: dark) { .companion-settings { background: #29262b; color: #eee4e8; border-color: #54474f; } input:not([type=checkbox]), select, textarea { background: #343036; border-color: #66545e; } details, .toggles { border-color: #54474f; } .hint, header p, summary span, footer p { color: #bba6b1; } .bank { background: #373037; } }
 </style>

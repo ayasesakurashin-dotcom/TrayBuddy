@@ -21,7 +21,7 @@
   let screenLabel = $state('');
   let screenError = $state(false);
   let lastObservation = $state<Observation | null>(null);
-  let characterName = $state('艾玛');
+  let characterName = $state('桌面伙伴');
   let epoch = 0;
   let composing = false;
   let input = $state<HTMLTextAreaElement>();
@@ -66,7 +66,7 @@
       epoch = view.history_epoch ?? 0;
       currentRequest = Math.max(currentRequest, view.request ?? 0);
       lastObservation = view.last_observation ?? null;
-      characterName = view.character_name || '艾玛';
+      characterName = view.character_name || '桌面伙伴';
       if (!toggling && revision === layoutRevision) collapsed = view.settings.input_collapsed;
       if (!activeClient) status = configured ? view.status : '请先在设置中配置对话 API';
       if (view.warning) warning = view.warning;

@@ -3,8 +3,8 @@ import path from 'node:path';
 import crypto from 'node:crypto';
 import { github, repository, uploadHeaders } from './github-release-access.mjs';
 
-const root = path.resolve(import.meta.dirname, '../release');
 const version = JSON.parse(fs.readFileSync(path.resolve(import.meta.dirname, '../package.json'), 'utf8')).version;
+const root = path.resolve(import.meta.dirname, '../release', `v${version}`);
 const base = `/repos/${repository}`;
 const tag = `v${version}`;
 const expectedCommit = JSON.parse(fs.readFileSync(path.join(root, `ema-desktop-${version}/build-info.json`), 'utf8')).SourceHead;

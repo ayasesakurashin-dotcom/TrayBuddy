@@ -45,7 +45,7 @@ pub fn companion_set_input_collapsed(
     collapsed: bool,
 ) -> Result<bool, String> {
     if window.label() != "companion-input" {
-        return Err("请从艾玛输入框展开或收起".into());
+        return Err("请从桌宠输入框展开或收起".into());
     }
     state.set_input_collapsed(collapsed)?;
     // The saved choice is authoritative; the tracking loop retries window sync.
@@ -74,10 +74,34 @@ pub async fn companion_send(
     payload: ChatSendPayload,
 ) -> Result<SendOutcome, String> {
     if window.label() != "companion-input" {
-        return Err("请从艾玛输入框发送消息".into());
+        return Err("请从桌宠输入框发送消息".into());
     }
     app.state::<Companion>().send(&app, payload).await
 }
+#[tauri::command]
+pub fn companion_set_input_anchor(
+    app: AppHandle,
+    window: WebviewWindow,
+    state: State<'_, Companion>,
+    anchor: Option<crate::modules::companion::window::InputAnchor>,
+) -> Result<(), String> {
+    if !crate::modules::constants::RENDER_WINDOW_LABELS.contains(&window.label()) {
+        return Err("无效桌宠窗口".into());
+    }
+    if anchor.is_some_and(|value| !value.valid()) {
+        return Err("无效桌宠显示边界".into());
+    }
+    {
+        let mut anchors = state.input_anchors.lock().unwrap();
+        if let Some(anchor) = anchor {
+            anchors.insert(window.label().to_owned(), anchor);
+        } else {
+            anchors.remove(window.label());
+        }
+    }
+    crate::modules::companion::sync_input_window(&app)
+}
+
 #[tauri::command]
 pub fn companion_set_input_layout(
     app: AppHandle,
@@ -278,12 +302,12 @@ pub async fn companion_export(app: AppHandle, window: WebviewWindow) -> Result<S
             .dialog()
             .file()
             .add_filter("JSON", &["json"])
-            .set_file_name("ema-companion-history.json")
+            .set_file_name("companion-history.json")
             .blocking_save_file();
         if let Some(file) = file {
             let path = file.into_path().map_err(|_| "导出路径无效")?;
             std::fs::write(path, text).map_err(|e| e.to_string())?;
-            Ok("已导出艾玛的全部记录".into())
+            Ok("已导出桌宠的全部记录".into())
         } else {
             Ok("已取消导出".into())
         }
@@ -296,32 +320,72 @@ pub async fn companion_export(app: AppHandle, window: WebviewWindow) -> Result<S
 pub fn companion_voice_samples(
     app: AppHandle,
     window: WebviewWindow,
+    role_id: String,
 ) -> Result<Vec<crate::modules::companion::voice::Sample>, String> {
     settings_only(&window)?;
-    crate::modules::companion::voice::samples(&app)
+    crate::modules::companion::voice::samples(&app, &role_id)
 }
 #[tauri::command]
 pub fn companion_voice_sample_audio(
     app: AppHandle,
     window: WebviewWindow,
+    role_id: String,
     name: String,
 ) -> Result<String, String> {
     settings_only(&window)?;
     use base64::Engine;
-    let bytes = crate::modules::companion::voice::read(&app, &name)?;
+    let bytes = crate::modules::companion::voice::read(&app, &role_id, &name)?;
     Ok(format!(
         "data:audio/wav;base64,{}",
         base64::engine::general_purpose::STANDARD.encode(bytes)
     ))
 }
+
+#[tauri::command]
+pub fn companion_voice_local_samples(app: AppHandle, window: WebviewWindow, role_id: String) -> Result<Vec<crate::modules::companion::voice::LocalSample>, String> {
+    settings_only(&window)?;
+    crate::modules::companion::voice::local_samples(&app, &role_id)
+}
+
+#[tauri::command]
+pub async fn companion_voice_import(app: AppHandle, window: WebviewWindow, role_id: String) -> Result<Option<Vec<crate::modules::companion::voice::LocalSample>>, String> {
+    settings_only(&window)?;
+    crate::modules::companion::voice::ensure_role(&app, &role_id)?;
+    use tauri_plugin_dialog::DialogExt;
+    tauri::async_runtime::spawn_blocking(move || {
+        let files = app.dialog().file().set_title("导入音声到本地暂存")
+            .add_filter("语音文件", &["wav", "mp3"]).blocking_pick_files();
+        let Some(files) = files else { return Ok(None); };
+        let paths = files.into_iter().map(|file| file.into_path().map_err(|_| "语音文件路径无效".to_string())).collect::<Result<Vec<_>, _>>()?;
+        crate::modules::companion::voice::import_local(&app, &role_id, &paths).map(Some)
+    }).await.map_err(|_| "本地音声导入任务异常".to_string())?
+}
+
+#[tauri::command]
+pub fn companion_voice_local_audio(app: AppHandle, window: WebviewWindow, role_id: String, id: String) -> Result<String, String> {
+    settings_only(&window)?;
+    use base64::Engine;
+    let (sample, bytes) = crate::modules::companion::voice::read_local(&app, &role_id, &id)?;
+    Ok(format!("data:{};base64,{}", sample.mime_type, base64::engine::general_purpose::STANDARD.encode(bytes)))
+}
+
+#[tauri::command]
+pub fn companion_voice_local_remove(app: AppHandle, window: WebviewWindow, role_id: String, id: String) -> Result<Vec<crate::modules::companion::voice::LocalSample>, String> {
+    settings_only(&window)?;
+    crate::modules::companion::voice::remove_local(&app, &role_id, &id)
+}
 #[tauri::command]
 pub async fn companion_voice_create(
     app: AppHandle,
     window: WebviewWindow,
+    role_id: String,
     names: Vec<String>,
+    local_ids: Vec<String>,
 ) -> Result<String, String> {
     settings_only(&window)?;
-    crate::modules::companion::voice::create(&app, names).await
+    let id = crate::modules::companion::voice::create(&app, role_id, names, local_ids).await?;
+    let _ = app.emit("companion-settings-changed", ());
+    Ok(id)
 }
 #[tauri::command]
 pub async fn companion_speech_preview(

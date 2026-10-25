@@ -4,8 +4,8 @@ import crypto from 'node:crypto';
 import { spawnSync } from 'node:child_process';
 
 const root = path.resolve(import.meta.dirname, '..');
-const release = path.join(root, 'release');
 const version = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8')).version;
+const release = path.join(root, 'release', `v${version}`);
 const verifyRoot = path.join(release, `verification-${Date.now()}`);
 fs.mkdirSync(verifyRoot);
 const sourceCommit = JSON.parse(fs.readFileSync(path.join(release, `ema-desktop-${version}/build-info.json`), 'utf8')).SourceHead;

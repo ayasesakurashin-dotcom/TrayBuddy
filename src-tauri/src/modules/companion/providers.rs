@@ -549,38 +549,6 @@ pub fn redact(text: &str) -> String {
     let key = KEY.get_or_init(|| regex::Regex::new(r"(?i)(?:sk-[a-z0-9_-]{12,}|bearer\s+[a-z0-9._-]{12,}|(?:api[_ -]?key|password|密码|验证码)\s*[:：=]\s*[^\s，。;；]{4,})").unwrap());
     key.replace_all(text, "[敏感内容已隐藏]").into_owned()
 }
-pub async fn translate(
-    settings: &Settings,
-    secrets: &Secrets,
-    text: &str,
-) -> Result<String, String> {
-    translate_as(
-        settings,
-        secrets,
-        text,
-        &super::character::active().translation_prompt(),
-    )
-    .await
-}
-pub async fn translate_as(
-    settings: &Settings,
-    secrets: &Secrets,
-    text: &str,
-    prompt: &str,
-) -> Result<String, String> {
-    streaming_completion(
-        &settings.chat,
-        &secrets.get("chat")?,
-        vec![
-            json!({"role":"system","content":prompt}),
-            json!({"role":"user","content":text}),
-        ],
-        |_| Ok(true),
-    )
-    .await
-    .map(|value| redact(value.trim()))
-}
-
 /// Persona is reference data, not a competing instruction for output language.
 pub async fn translate_for_role(
     settings: &Settings,

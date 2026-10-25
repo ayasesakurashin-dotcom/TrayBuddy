@@ -6,6 +6,7 @@ pub mod context;
 mod diagnostics;
 mod memory;
 pub mod observations;
+mod presets;
 pub mod proactive;
 pub(crate) mod providers;
 mod reply_text;
@@ -15,7 +16,8 @@ pub mod search;
 pub mod settings;
 pub mod store;
 pub mod voice;
-mod window;
+mod voice_library;
+pub(crate) mod window;
 pub use window::{
     follow as follow_input_window, menu_event, menu_items, refresh, sync as sync_input_window,
 };
@@ -52,6 +54,7 @@ pub struct Companion {
     save_gate: Mutex<()>,
     settings_revision: AtomicU64,
     pub input_expanded: AtomicBool,
+    pub(crate) input_anchors: Mutex<std::collections::HashMap<String, window::InputAnchor>>,
     event_seq: AtomicU64,
     active_request: Mutex<Option<request::ActiveRequest>>,
     warning: Mutex<Option<String>>,
@@ -111,6 +114,7 @@ impl Companion {
             save_gate: Mutex::new(()),
             settings_revision: AtomicU64::new(0),
             input_expanded: AtomicBool::new(false),
+            input_anchors: Mutex::new(Default::default()),
             event_seq: AtomicU64::new(0),
             active_request: Mutex::new(None),
             warning: Mutex::new(None),
@@ -145,6 +149,7 @@ impl Companion {
             save_gate: Mutex::new(()),
             settings_revision: AtomicU64::new(0),
             input_expanded: AtomicBool::new(false),
+            input_anchors: Mutex::new(Default::default()),
             event_seq: AtomicU64::new(0),
             active_request: Mutex::new(None),
             warning: Mutex::new(None),

@@ -21,7 +21,7 @@ use crate::{
     update_tray_icon_sync, update_window_icons_async,
 };
 use std::sync::Arc;
-use tauri::{AppHandle, Manager, State};
+use tauri::{AppHandle, Emitter, Manager, State};
 
 
 // ========================================================================= //
@@ -128,6 +128,10 @@ async fn load_mod_common<F>(
 where
     F: FnOnce(&mut crate::modules::resource::ResourceManager) -> Result<Arc<ModInfo>, String>,
 {
+    // A role switch ends the old role's response but preserves global AI options.
+    if let Some(companion) = app.try_state::<crate::modules::companion::Companion>() {
+        companion.cancel(&app);
+    }
     // 0. 记录当前 Mod 类型（用于后续判断是否跨类型切换）
     // 同时记录旧 mod_id（若为 archive mod，用于切换后主动释放内存缓存）。
     let (old_mod_type, old_archive_mod_id) = {
@@ -149,6 +153,11 @@ where
     // - 工具窗口（destroy_on_close: true）则会按 Tauri 默认行为被销毁。
     let windows = app.webview_windows();
     for (label, window) in windows {
+        if label == crate::modules::companion::window::INPUT_LABEL {
+            // close() is a user action that disables input; switching only hides it.
+            let _ = window.hide();
+            continue;
+        }
         if label != WINDOW_LABEL_MODS {
             let _ = window.close();
         }
@@ -244,6 +253,9 @@ where
             store.evict_loaded(&old_id);
         }
     }
+
+    crate::modules::companion::refresh(&app);
+    let _ = app.emit("companion-settings-changed", ());
 
     // 6. 触发登录/加载完成事件（如播放打招呼语音）
     tokio::time::sleep(std::time::Duration::from_secs(MOD_LOGIN_EVENT_DELAY_SECS)).await;

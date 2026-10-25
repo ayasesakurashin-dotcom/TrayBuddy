@@ -1,4 +1,5 @@
-use super::{character, providers, settings, Companion};
+pub use super::voice_library::LocalSample;
+use super::{character, providers, settings, voice_library, Companion};
 use crate::app_state::AppState;
 use serde::Serialize;
 use serde_json::{json, Value};
@@ -10,12 +11,56 @@ pub struct Sample {
     pub name: String,
     pub candidate_text: String,
 }
-pub fn samples(app: &tauri::AppHandle) -> Result<Vec<Sample>, String> {
+pub fn ensure_role(app: &tauri::AppHandle, role_id: &str) -> Result<(), String> {
+    app.state::<Companion>().ensure_ready()?;
+    if character::current_mod(app) != role_id {
+        return Err("角色已切换，请重新打开当前角色的声音素材".into());
+    }
+    Ok(())
+}
+
+pub fn local_samples(app: &tauri::AppHandle, role_id: &str) -> Result<Vec<LocalSample>, String> {
+    ensure_role(app, role_id)?;
+    voice_library::list(&app.state::<Companion>().dir, role_id)
+}
+
+pub fn import_local(
+    app: &tauri::AppHandle,
+    role_id: &str,
+    paths: &[std::path::PathBuf],
+) -> Result<Vec<LocalSample>, String> {
+    ensure_role(app, role_id)?;
+    voice_library::import(&app.state::<Companion>().dir, role_id, paths)
+}
+
+pub fn read_local(
+    app: &tauri::AppHandle,
+    role_id: &str,
+    id: &str,
+) -> Result<(LocalSample, Vec<u8>), String> {
+    ensure_role(app, role_id)?;
+    voice_library::read(&app.state::<Companion>().dir, role_id, id)
+}
+
+pub fn remove_local(
+    app: &tauri::AppHandle,
+    role_id: &str,
+    id: &str,
+) -> Result<Vec<LocalSample>, String> {
+    ensure_role(app, role_id)?;
+    voice_library::remove(&app.state::<Companion>().dir, role_id, id)
+}
+
+pub fn samples(app: &tauri::AppHandle, role_id: &str) -> Result<Vec<Sample>, String> {
+    ensure_role(app, role_id)?;
     let state = app.state::<AppState>();
     let cfg = app.state::<Companion>().settings.lock().unwrap().clone();
     let profile = character::resolve(app, &cfg);
     let rm = state.resource_manager.lock().unwrap();
     let info = rm.current_mod.as_ref().ok_or("请先加载角色")?;
+    if info.manifest.id.as_ref() != role_id {
+        return Err("角色素材正在切换，请稍后重试".into());
+    }
     let locale = asset_locale(&profile.voice_locale, &info.manifest.default_audio_lang_id);
     Ok(info
         .audios
@@ -34,14 +79,15 @@ pub fn samples(app: &tauri::AppHandle) -> Result<Vec<Sample>, String> {
         })
         .unwrap_or_default())
 }
-pub fn read(app: &tauri::AppHandle, name: &str) -> Result<Vec<u8>, String> {
+pub fn read(app: &tauri::AppHandle, role_id: &str, name: &str) -> Result<Vec<u8>, String> {
+    ensure_role(app, role_id)?;
     let state = app.state::<AppState>();
     let cfg = app.state::<Companion>().settings.lock().unwrap().clone();
     let profile = character::resolve(app, &cfg);
     let (base, relative) = {
         let rm = state.resource_manager.lock().unwrap();
         let info = rm.current_mod.as_ref().ok_or("请先加载角色")?;
-        if info.manifest.id.as_ref() != profile.id {
+        if info.manifest.id.as_ref() != role_id || profile.id != role_id {
             return Err("当前角色与陪伴配置不一致".into());
         }
         let locale = asset_locale(&profile.voice_locale, &info.manifest.default_audio_lang_id);
@@ -86,15 +132,26 @@ pub fn read(app: &tauri::AppHandle, name: &str) -> Result<Vec<u8>, String> {
     }
     Ok(bytes)
 }
-pub async fn create(app: &tauri::AppHandle, names: Vec<String>) -> Result<String, String> {
-    if names.is_empty() || names.len() > 8 {
+pub async fn create(
+    app: &tauri::AppHandle,
+    role_id: String,
+    names: Vec<String>,
+    local_ids: Vec<String>,
+) -> Result<String, String> {
+    ensure_role(app, &role_id)?;
+    if names.len() + local_ids.len() == 0
+        || names.len() + local_ids.len() > voice_library::MAX_SAMPLES
+    {
         return Err("请选择 1—8 段清晰的语音素材".into());
     }
     let service = app.state::<Companion>();
     service.ensure_ready()?;
-    let mut cfg = service.settings.lock().unwrap().clone();
+    let cfg = service.settings.lock().unwrap().clone();
     cfg.validate()?;
     let role = character::resolve(app, &cfg);
+    if role.id != role_id {
+        return Err("角色已切换，请重新选择素材".into());
+    }
     let key = service.secrets.get("speech")?;
     if key.is_empty() {
         return Err("请先保存 Fish Audio API 密钥".into());
@@ -111,24 +168,51 @@ pub async fn create(app: &tauri::AppHandle, names: Vec<String>) -> Result<String
         .text("generate_sample", "false");
     let mut total = 0;
     let mut provenance = Vec::new();
+    let mut seen = std::collections::HashSet::new();
     for name in &names {
-        if character::current_mod(app) != role.id {
-            return Err("角色已切换，已停止上传参考素材".into());
+        if !seen.insert(format!("preset:{name}")) {
+            return Err("请勿重复选择语音素材".into());
         }
-        let data = read(app, name)?;
+        let data = read(app, &role_id, name)?;
         total += data.len();
-        if total > 20_000_000 {
+        if total > voice_library::MAX_TOTAL_BYTES {
             return Err("参考素材总量请控制在 20MB 内".into());
         }
-        provenance.push(json!({"sample":name,"sha256":format!("{:x}",Sha256::digest(&data))}));
+        provenance.push(
+            json!({"source":"preset","sample":name,"sha256":format!("{:x}",Sha256::digest(&data))}),
+        );
         form = form.part(
             "voices",
             reqwest::multipart::Part::bytes(data)
-                .file_name(format!("{name}.wav"))
+                .file_name(format!("preset-{}.wav", provenance.len()))
                 .mime_str("audio/wav")
                 .map_err(|e| e.to_string())?,
         );
     }
+    for id in &local_ids {
+        if !seen.insert(format!("local:{id}")) {
+            return Err("请勿重复选择语音素材".into());
+        }
+        let (sample, data) = read_local(app, &role_id, id)?;
+        total += data.len();
+        if total > voice_library::MAX_TOTAL_BYTES {
+            return Err("参考素材总量请控制在 20MB 内".into());
+        }
+        let extension = if sample.mime_type == "audio/wav" {
+            "wav"
+        } else {
+            "mp3"
+        };
+        provenance.push(json!({"source":"local","sample":sample.name,"sha256":sample.id}));
+        form = form.part(
+            "voices",
+            reqwest::multipart::Part::bytes(data)
+                .file_name(format!("local-{}.{extension}", provenance.len()))
+                .mime_str(&sample.mime_type)
+                .map_err(|e| e.to_string())?,
+        );
+    }
+    ensure_role(app, &role_id)?;
     // No guessed transcripts: provider ASR handles the actual recordings.
     let response = providers::client(false)?
         .post(format!(
@@ -157,11 +241,31 @@ pub async fn create(app: &tauri::AppHandle, names: Vec<String>) -> Result<String
         .filter(|v| !v.is_empty())
         .ok_or("服务未返回声音 ID")?
         .to_string();
-    settings::atomic_write(&service.dir.join("voice-provenance.json"),&serde_json::to_vec_pretty(&json!({"voice_id":id,"samples":provenance,"created_at":chrono::Utc::now().to_rfc3339(),"transcription":"provider-asr"})).map_err(|e|e.to_string())?)?;
-    // Reload settings so an in-flight upload cannot undo concurrent menu changes.
-    cfg = service.settings.lock().unwrap().clone();
-    if character::profile_for_mod(&role.id).is_some() {
-        cfg.voice_id = id.clone();
+    let provenance_dir = service.dir.join("voice-provenance");
+    std::fs::create_dir_all(&provenance_dir).map_err(|e| e.to_string())?;
+    settings::atomic_write(&provenance_dir.join(format!("{}.json", settings::random_id()?)),&serde_json::to_vec_pretty(&json!({"role_id":role_id,"voice_id":id,"samples":provenance,"created_at":chrono::Utc::now().to_rfc3339(),"transcription":"provider-asr"})).map_err(|e|e.to_string())?)?;
+    bind_voice(&service, &role, &id)?;
+    Ok(id)
+}
+
+fn bind_voice(
+    service: &Companion,
+    role: &character::RuntimeProfile,
+    id: &str,
+) -> Result<(), String> {
+    // Serialize the entire read/modify/write, preserving concurrent settings and
+    // binding to the original role even if the user switched during the request.
+    let _gate = service.save_gate.lock().unwrap();
+    service.ensure_ready()?;
+    let mut cfg = service.settings.lock().unwrap().clone();
+    let latest = character::resolve_for(&role.id, &role.display_name, &cfg);
+    if latest.voice_id != role.voice_id {
+        return Err(format!(
+            "私有声音已建立（{id}），但该角色的声音设置已变化，未自动替换；可手动填写此 ID"
+        ));
+    }
+    if character::uses_legacy_voice(&role.id) {
+        cfg.voice_id = id.into();
     }
     let entry = cfg
         .characters
@@ -172,9 +276,17 @@ pub async fn create(app: &tauri::AppHandle, names: Vec<String>) -> Result<String
             voice_locale: role.voice_locale.clone(),
             voice_id: String::new(),
         });
-    entry.voice_id = id.clone();
-    service.save(cfg)?;
-    Ok(id)
+    entry.voice_id = id.into();
+    cfg.validate()?;
+    settings::atomic_write(
+        &service.dir.join("settings.json"),
+        &serde_json::to_vec_pretty(&cfg).map_err(|e| e.to_string())?,
+    )?;
+    *service.settings.lock().unwrap() = cfg;
+    service
+        .settings_revision
+        .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+    Ok(())
 }
 
 fn asset_locale<'a>(locale: &'a str, fallback: &'a str) -> &'a str {
@@ -182,5 +294,61 @@ fn asset_locale<'a>(locale: &'a str, fallback: &'a str) -> &'a str {
         "original" => fallback,
         "ja" => "jp",
         other => other,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn voice_binding_preserves_other_roles_shared_settings_and_memory_identity() {
+        let dir = tempfile::tempdir().unwrap();
+        let service = Companion::new(dir.path().into()).unwrap();
+        let original = service.settings.lock().unwrap().clone();
+        let role = character::resolve_for("other", "伙伴", &original);
+        let identity = std::fs::read(dir.path().join("identity.json")).unwrap();
+        let mut edited = original.clone();
+        edited.nickname = "friend".into();
+        edited.voice_id = "legacy-voice".into();
+        edited.characters.insert(
+            "third".into(),
+            character::RoleSettings {
+                voice_id: "third-voice".into(),
+                ..Default::default()
+            },
+        );
+        service.save(edited).unwrap();
+        bind_voice(&service, &role, "uploaded-voice").unwrap();
+        let saved = settings::load_settings(dir.path()).unwrap();
+        assert_eq!(saved.characters["other"].voice_id, "uploaded-voice");
+        assert_eq!(saved.characters["third"].voice_id, "third-voice");
+        assert_eq!(saved.voice_id, "legacy-voice");
+        assert_eq!(saved.nickname, "friend");
+        assert_eq!(
+            std::fs::read(dir.path().join("identity.json")).unwrap(),
+            identity
+        );
+    }
+    #[test]
+    fn voice_binding_does_not_replace_a_voice_edited_while_uploading() {
+        let dir = tempfile::tempdir().unwrap();
+        let service = Companion::new(dir.path().into()).unwrap();
+        let mut cfg = service.settings.lock().unwrap().clone();
+        let role = character::resolve_for("ema", "艾玛", &cfg);
+        cfg.characters.insert(
+            "ema".into(),
+            character::RoleSettings {
+                voice_id: "manual-voice".into(),
+                ..Default::default()
+            },
+        );
+        service.save(cfg).unwrap();
+        assert!(bind_voice(&service, &role, "uploaded-voice")
+            .unwrap_err()
+            .contains("uploaded-voice"));
+        assert_eq!(
+            settings::load_settings(dir.path()).unwrap().characters["ema"].voice_id,
+            "manual-voice"
+        );
     }
 }

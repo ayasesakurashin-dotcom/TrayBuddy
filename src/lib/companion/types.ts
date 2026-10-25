@@ -2,6 +2,7 @@ export type ThinkingLevel = 'off' | 'low' | 'high' | 'max';
 export interface Endpoint { base_url: string; model: string; api_key?: string; has_key: boolean; thinking?: ThinkingLevel; thinking_format?: 'auto' | 'deepseek' | 'reasoning_effort' }
 export interface RoleSettings {display_name:string;persona:string;voice_locale:string;voice_id:string}
 export interface RuntimeRole extends RoleSettings {id:string}
+export interface LocalVoiceSample { id: string; name: string; size: number; mime_type: string }
 export interface CompanionSettings {
   characters?:Record<string,RoleSettings>;
   schema_version: number; input_enabled: boolean; input_collapsed: boolean; speech_enabled: boolean; observation_enabled: boolean; memory_enabled: boolean;
@@ -10,7 +11,7 @@ export interface CompanionSettings {
   capture_scope: string; capture_region: [number, number, number, number]; excluded_windows: string[];
   /** Total reply limit in Unicode characters; 0 leaves the model output uncapped by the app. */
   reply_max_chars: number; nickname: string;
-  web_search?: { enabled: boolean };
+  web_search?: { enabled: boolean; search_when_uncertain?: boolean };
 }
 export interface ObservationRef { observation_id: string; relation_kind: string; ordinal: number }
 export interface Observation { id: string; observed_at: string; summary: string; visible_text?: string; source_label?: string; uncertainties?: string[] }

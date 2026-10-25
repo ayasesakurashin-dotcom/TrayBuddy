@@ -4,7 +4,7 @@
 pub mod policy;
 use super::{providers, settings::Settings};
 pub use policy::WebSource;
-use policy::{Route, RouteAction, ROUTER_VERSION};
+use policy::{Route, RouteAction, RouteReason, ROUTER_VERSION};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::{sync::OnceLock, time::Duration};
@@ -286,6 +286,22 @@ async fn route(
     )
 }
 
+fn apply_uncertain_default(mut route: Route, search_when_uncertain: bool) -> Route {
+    if route.action == RouteAction::Direct && route.reason == RouteReason::Uncertain {
+        if !search_when_uncertain {
+            route.query.clear();
+        } else if route.query.trim().is_empty() {
+            // Never use the raw message or private conversation as a fallback query.
+            route.action = RouteAction::Clarify;
+            route.reason = RouteReason::MissingContext;
+            route.clarification = "你希望查询哪一项公开资料？请给出名称或关键词。".into();
+        } else {
+            route.action = RouteAction::Search;
+        }
+    }
+    route
+}
+
 pub async fn prepare(
     settings: &Settings,
     key: &str,
@@ -330,7 +346,7 @@ pub async fn prepare(
     .await;
     outcome.context.route_ms = millis(route_start.elapsed());
     let routing = match routing {
-        Ok(value) => value,
+        Ok(value) => apply_uncertain_default(value, settings.web_search.search_when_uncertain),
         Err(error) => {
             outcome.context.status = "skipped".into();
             outcome.context.reason = "route_unavailable".into();
@@ -470,6 +486,33 @@ mod tests {
         assert!(parse_route(json!({"choices":[]})).is_err());
         assert!(parse_route(json!({"choices":[{"finish_reason":"stop","message":{"content":route}},{"finish_reason":"stop","message":{"content":route}}]})).is_err());
     }
+    #[test]
+    fn uncertain_search_is_controlled_by_the_saved_preference() {
+        let parsed = parse_route(json!({"choices":[{"finish_reason":"stop","message":{"content":json!({"action":"direct","reason":"uncertain","query":"公开软件 项目说明","clarification":""}).to_string()}}]})).unwrap();
+        let conservative = apply_uncertain_default(parsed.clone(), false);
+        assert_eq!(conservative.action, RouteAction::Direct);
+        assert!(conservative.query.is_empty());
+        let searching = apply_uncertain_default(parsed, true);
+        assert_eq!(searching.action, RouteAction::Search);
+        assert_eq!(policy::safe_query(&searching.query).unwrap(), "公开软件 项目说明");
+        assert_eq!(searching.reason, RouteReason::Uncertain);
+    }
+    #[test]
+    fn uncertain_default_does_not_search_other_direct_reasons_or_invent_a_query() {
+        for reason in [RouteReason::NoWeb, RouteReason::PersonalMemory, RouteReason::Weather,
+            RouteReason::LocalTime, RouteReason::ProvidedText, RouteReason::Emotional,
+            RouteReason::Creative, RouteReason::StableCommon] {
+            let route = Route {action:RouteAction::Direct,reason,query:String::new(),clarification:String::new()};
+            assert_eq!(apply_uncertain_default(route, true).action, RouteAction::Direct);
+        }
+        let route = Route {action:RouteAction::Direct,reason:RouteReason::Uncertain,query:String::new(),clarification:String::new()};
+        let clarified = apply_uncertain_default(route, true);
+        assert_eq!(clarified.action, RouteAction::Clarify);
+        assert!(clarified.query.is_empty());
+        assert!(!clarified.clarification.is_empty());
+        let private = Route {action:RouteAction::Direct,reason:RouteReason::Uncertain,query:"联系 user@example.com".into(),clarification:String::new()};
+        assert!(policy::safe_query(&apply_uncertain_default(private, true).query).is_none());
+    }
     #[tokio::test]
     async fn network_limits_http_errors_and_redirects_are_bounded_without_retry() {
         for (status, body, limit, expected) in [
@@ -554,6 +597,7 @@ mod tests {
     #[tokio::test]
     async fn disabled_unsupported_and_no_web_never_start_network_stages() {
         let mut settings = Settings::default();
+        settings.web_search.search_when_uncertain = true;
         settings.web_search.enabled = false;
         let result = prepare(&settings, "fake-key", "请核实最新信息", &[], |_| {
             panic!("must not start")

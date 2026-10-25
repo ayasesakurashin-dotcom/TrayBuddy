@@ -2,7 +2,7 @@ use super::providers;
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 
-pub const ROUTER_VERSION: &str = "web_search_router_v2";
+pub const ROUTER_VERSION: &str = "web_search_router_v3";
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -67,7 +67,10 @@ pub fn validate_route(route: &Route) -> bool {
         RouteAction::Direct => {
             !search_reason
                 && !clarify_reason
-                && route.query.is_empty()
+                && (route.query.is_empty()
+                    || (route.reason == RouteReason::Uncertain
+                        && (1..=128).contains(&route.query.chars().count())
+                        && !route.query.trim().is_empty()))
                 && route.clarification.is_empty()
         }
     }
@@ -464,6 +467,10 @@ mod tests {
         )
         .unwrap();
         assert!(validate_route(&direct));
+        let candidate = Route {query:"公开项目 功能介绍".into(),..direct.clone()};
+        assert!(validate_route(&candidate));
+        assert!(!validate_route(&Route {query:"🙂".repeat(129),..direct.clone()}));
+        assert!(!validate_route(&Route {reason:RouteReason::Emotional,..candidate}));
         for value in [
             json!({"action":"search","reason":"uncertain","query":"hello","clarification":""}),
             json!({"action":"direct","reason":"specific_fact","query":"","clarification":""}),

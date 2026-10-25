@@ -1,5 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import { attachCompanion } from "$lib/companion/presentation";
+import { trackInputAnchor } from "$lib/companion/inputAnchor";
 import { attachCare } from "$lib/care/presentation";
 import { listen, emit } from "@tauri-apps/api/event";
 import { getCurrentWindow, cursorPosition, LogicalPosition } from "@tauri-apps/api/window";
@@ -179,6 +180,7 @@ export function createWindowCore(options: {
 
   let audioManager: AudioManager | null = null;
   let companion: Awaited<ReturnType<typeof attachCompanion>> | null = null;
+  let stopInputAnchor: (() => void) | null = null;
   let care: Awaited<ReturnType<typeof attachCare>> | null = null;
   let triggerManager: TriggerManager | null = null;
 
@@ -1074,6 +1076,7 @@ export function createWindowCore(options: {
    */
   async function init() {
     try {
+      stopInputAnchor = trackInputAnchor(() => [refs.getCharacterCanvas(), refs.getBorderCanvas()]);
       await setClickThrough(true);
       startCursorPolling();
 
@@ -1406,6 +1409,7 @@ export function createWindowCore(options: {
   }
 
   function destroy() {
+    stopInputAnchor?.();
     window.removeEventListener("keydown", handleGlobalKeydown);
     window.removeEventListener("keyup", handleGlobalKeyup);
 

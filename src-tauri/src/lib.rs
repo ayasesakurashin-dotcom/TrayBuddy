@@ -727,9 +727,10 @@ pub fn run() {
             reset_animation_window_position,
             // 登录检测
             start_login_detection,
-            // 艾玛独立 AI
+            // 通用桌宠 AI
             companion_get,
             companion_set_input_layout,
+            companion_set_input_anchor,
             companion_prepare_screen,
             companion_request_receipt,
             companion_get_observations,
@@ -750,6 +751,10 @@ pub fn run() {
             companion_export,
             companion_voice_samples,
             companion_voice_sample_audio,
+            companion_voice_local_samples,
+            companion_voice_import,
+            companion_voice_local_audio,
+            companion_voice_local_remove,
             companion_voice_create,
             companion_speech_preview,
         ])

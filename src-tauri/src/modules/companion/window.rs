@@ -5,6 +5,33 @@ use tauri::{
 
 pub const INPUT_LABEL: &str = "companion-input";
 
+#[derive(Clone, Copy, Debug, serde::Deserialize)]
+pub struct InputAnchor {
+    center_x: f64,
+    bottom: f64,
+    viewport_width: f64,
+    viewport_height: f64,
+}
+
+impl InputAnchor {
+    pub fn valid(self) -> bool {
+        [self.center_x, self.bottom, self.viewport_width, self.viewport_height]
+            .iter().all(|value| value.is_finite())
+            && self.viewport_width > 0.0 && self.viewport_height > 0.0
+            && self.center_x >= 0.0 && self.center_x <= self.viewport_width
+            && self.bottom > 0.0 && self.bottom <= self.viewport_height
+    }
+
+    fn physical(self, size: PhysicalSize<u32>, scale: f64) -> PhysicalPosition<i32> {
+        // DOM measurements are relative CSS pixels. Map the actual viewport to
+        // the client area once; screen origins must never be scaled again.
+        PhysicalPosition::new(
+            (self.center_x * size.width as f64 / self.viewport_width).round() as i32,
+            (self.bottom * size.height as f64 / self.viewport_height + 8.0 * scale).round() as i32,
+        )
+    }
+}
+
 // Serialize visibility and geometry on the UI thread. In particular, a queued
 // tracking update must read the latest setting instead of showing an input
 // window again after the user has disabled it.
@@ -83,8 +110,12 @@ fn input_position(
     pet: &WebviewWindow,
     size: PhysicalSize<u32>,
 ) -> Result<PhysicalPosition<i32>, String> {
-    let pos = pet.outer_position().map_err(|e| e.to_string())?;
-    let pet_size = pet.outer_size().map_err(|e| e.to_string())?;
+    let pos = pet.inner_position().map_err(|e| e.to_string())?;
+    let pet_size = pet.inner_size().map_err(|e| e.to_string())?;
+    let scale = pet.scale_factor().map_err(|e| e.to_string())?;
+    let service = pet.state::<Companion>();
+    let anchor = service.input_anchors.lock().unwrap().get(pet.label())
+        .map(|anchor| anchor.physical(pet_size, scale));
     let area = pet
         .current_monitor()
         .map_err(|e| e.to_string())?
@@ -92,7 +123,7 @@ fn input_position(
             let area = monitor.work_area();
             (area.position, area.size)
         });
-    Ok(place_input(pos, pet_size, size, area))
+    Ok(place_input(pos, pet_size, size, area, anchor))
 }
 
 fn place_input(
@@ -100,18 +131,19 @@ fn place_input(
     pet_size: PhysicalSize<u32>,
     input: PhysicalSize<u32>,
     area: Option<(PhysicalPosition<i32>, PhysicalSize<u32>)>,
+    anchor: Option<PhysicalPosition<i32>>,
 ) -> PhysicalPosition<i32> {
     // All values here are physical pixels, including negative monitor origins.
-    let mut x = pet.x + (pet_size.width as i32 - input.width as i32) / 2;
-    let mut y = pet.y + pet_size.height as i32;
+    let mut x = anchor.map_or(
+        pet.x + (pet_size.width as i32 - input.width as i32) / 2,
+        |anchor| pet.x + anchor.x - input.width as i32 / 2,
+    );
+    let mut y = pet.y + anchor.map_or(pet_size.height as i32, |anchor| anchor.y);
     if let Some((origin, size)) = area {
         let right = origin.x + size.width as i32;
         let bottom = origin.y + size.height as i32;
         x = x.clamp(origin.x, (right - input.width as i32).max(origin.x));
-        // Keep the entry beside the visible character at the bottom edge. The
-        // render HWND includes a tall transparent bubble area above the model;
-        // moving above that HWND would visibly detach the input from the pet.
-        // Never move the pet itself while handling one of its movement events.
+        // Keep the input in the work area without ever moving the pet itself.
         y = y.clamp(origin.y, (bottom - input.height as i32).max(origin.y));
     }
     PhysicalPosition::new(x, y)
@@ -144,7 +176,7 @@ fn sync_now(app: &tauri::AppHandle) -> Result<(), String> {
     } else {
         let window =
             WebviewWindowBuilder::new(app, INPUT_LABEL, WebviewUrl::App("companion_input".into()))
-                .title(format!("和{}聊聊", super::character::default_profile().display_name))
+                .title("桌宠对话")
                 .inner_size(width, height)
                 .decorations(false)
                 .transparent(true)
@@ -233,7 +265,7 @@ pub fn menu_items(app: &tauri::AppHandle) -> tauri::Result<tauri::menu::Submenu<
     let stop = MenuItem::with_id(app, "companion_stop", "停止回复和播放", true, None::<&str>)?;
     Submenu::with_items(
         app,
-        "艾玛 AI",
+        "桌宠 AI",
         true,
         &[&input, &speech, &screen, &once, &stop],
     )
@@ -289,6 +321,7 @@ mod tests {
                 PhysicalSize::new(500, 450),
                 PhysicalSize::new(495, 126),
                 Some((PhysicalPosition::new(0, 0), PhysicalSize::new(1920, 1040))),
+                None,
             ),
             PhysicalPosition::new(302, 630),
         );
@@ -302,6 +335,7 @@ mod tests {
                 PhysicalSize::new(330, 300),
                 PhysicalSize::new(330, 84),
                 Some((PhysicalPosition::new(0, 0), PhysicalSize::new(1920, 1040))),
+                None,
             ),
             PhysicalPosition::new(400, 956),
         );
@@ -318,6 +352,7 @@ mod tests {
                     PhysicalPosition::new(-1440, -100),
                     PhysicalSize::new(1440, 960)
                 )),
+                None,
             ),
             PhysicalPosition::new(-1440, 50),
         );
@@ -327,8 +362,64 @@ mod tests {
                 PhysicalSize::new(300, 250),
                 PhysicalSize::new(330, 84),
                 Some((PhysicalPosition::new(0, 0), PhysicalSize::new(200, 60))),
+                None,
             ),
             PhysicalPosition::new(0, 0),
         );
+    }
+
+    #[test]
+    fn measured_model_bottom_ignores_the_transparent_window_reserve() {
+        let anchor = InputAnchor {
+            center_x: 250.0, bottom: 540.0,
+            viewport_width: 500.0, viewport_height: 800.0,
+        };
+        assert!(anchor.valid());
+        for scale in [1.0, 1.5, 2.0] {
+            let size = PhysicalSize::new((500.0 * scale) as u32, (800.0 * scale) as u32);
+            for (width, height) in [(330.0, 84.0), (330.0, 110.0), (132.0, 32.0)] {
+                assert_eq!(
+                    place_input(
+                        PhysicalPosition::new(-1600, -100), size,
+                        PhysicalSize::new((width * scale) as u32, (height * scale) as u32),
+                        None, Some(anchor.physical(size, scale)),
+                    ),
+                    PhysicalPosition::new(
+                        -1600 + (250.0 * scale) as i32 - (width * scale) as i32 / 2,
+                        -100 + (548.0 * scale) as i32,
+                    ),
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn measured_anchor_moves_with_pet_and_clamps_to_work_area() {
+        let size = PhysicalSize::new(500, 800);
+        let input = PhysicalSize::new(330, 84);
+        let area = Some((PhysicalPosition::new(-1920, -100), PhysicalSize::new(1920, 1040)));
+        for pet_y in [-100, 500] {
+            assert_eq!(
+                place_input(PhysicalPosition::new(-1900, pet_y), size, input, area,
+                    Some(PhysicalPosition::new(250, 548))),
+                PhysicalPosition::new(-1815, (pet_y + 548).min(856)),
+            );
+        }
+    }
+
+    #[test]
+    fn invalid_or_off_viewport_measurements_are_rejected() {
+        let anchor = InputAnchor {
+            center_x: 250.0, bottom: 540.0,
+            viewport_width: 500.0, viewport_height: 800.0,
+        };
+        for invalid in [
+            InputAnchor { center_x: f64::NAN, ..anchor },
+            InputAnchor { bottom: f64::INFINITY, ..anchor },
+            InputAnchor { viewport_width: 0.0, ..anchor },
+            InputAnchor { viewport_height: -1.0, ..anchor },
+            InputAnchor { center_x: 501.0, ..anchor },
+            InputAnchor { bottom: 801.0, ..anchor },
+        ] { assert!(!invalid.valid()); }
     }
 }
